@@ -87,8 +87,8 @@ pub fn game_to_inputs<E: Dtype + From<f32>+ num_traits::Float + rand_distr::unif
 
         let input = (
             states_in_seq.clone().stack(),
-            masked_actions(&actions_in_seq, dev).stack(),
-            rtg_in_seq.clone().stack(),
+            masked_next(&actions_in_seq, dev).stack(),
+            masked_next(&rtg_in_seq, dev).stack(),
             timesteps_in_seq.clone().stack(),
         );
         inputs.push(input)
@@ -110,7 +110,7 @@ fn next_sequence<
     seq[seq.len() - 1] = new_last_element;
 }
 
-fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform , D: Device<E>, Game: DTState<E, D>>(
+pub fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform , D: Device<E>, Game: DTState<E, D>>(
     states: &Vec<Game>,
     actions: &Vec<Game::Action>,
 ) -> Vec<f32> {
@@ -126,10 +126,10 @@ fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::unifo
     backwards_rewards
 }
 
-fn masked_actions<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform, D: Device<E>, Game: DTState<E, D>>(
-    seq: &[Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::EPISODES_IN_SEQ],
+fn masked_next<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform, D: Device<E>, Game: DTState<E, D>, S: ConstShape>(
+    seq: &[Tensor<S, E, D>; Game::EPISODES_IN_SEQ],
     dev: &D,
-) -> [Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::EPISODES_IN_SEQ]{
+) -> [Tensor<S, E, D>; Game::EPISODES_IN_SEQ]{
     let mut new_seq = seq.clone();
     new_seq[new_seq.len() - 1] = dev.zeros();
     new_seq

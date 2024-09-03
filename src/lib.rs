@@ -2,6 +2,7 @@
 #![feature(generic_const_exprs)]
 
 mod dt_model;
+mod predict;
 mod state_trait;
 mod train;
 mod trait_helpers;

@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use dfdx::prelude::*;
 use stack::StackKernel;
 
@@ -18,19 +20,30 @@ pub trait DTState<
     const EPISODES_IN_SEQ: usize;
     const MAX_EPISODES_IN_GAME: usize;
 
-    // Required method
+    /// Required method
     fn apply_action(&mut self, action: Self::Action);
 
-    // Required method
+    /// Required method
     fn get_reward(&self, action: Self::Action) -> f32;
 
-    // Required method
+    /// Required method
     fn to_tensor(&self) -> Tensor<(Const<{ Self::STATE_SIZE }>,), E, D>;
 
-    // Required method
-    fn action_to_tensor(action: &Self::Action) -> Tensor<(Const<{ Self::ACTION_SIZE }>,), E, D>;
+    /// Required method
+    fn action_to_index(action: &Self::Action) -> usize;
 
-    // Provided method
+    /// Required method
+    fn index_to_action(action: usize) -> Self::Action;
+
+    /// Provided method
+    fn action_to_tensor(action: &Self::Action) -> Tensor<(Const<{ Self::ACTION_SIZE }>,), E, D> {
+        let dev: Cpu = Default::default();
+        let mut t = dev.zeros();
+        t[[Self::action_to_index(action)]] = 1.0_f32.into();
+        t.to_device(&D::default())
+    }
+
+    /// Provided method
     fn build_model() -> DTModelWrapper<E, D, Self>
     where [(); Self::MAX_EPISODES_IN_GAME]: Sized,
     [(); Self::ACTION_SIZE]: Sized,

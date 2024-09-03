@@ -69,7 +69,7 @@ impl<
     let grads = loss.backward();
 
     // apply gradients
-    optimizer.update(&mut self.0, &grads).expect("unused grads");
+    optimizer.update(&mut self.0, &grads);
 
     loss_value
     }
