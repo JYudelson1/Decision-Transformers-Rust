@@ -3,7 +3,7 @@ use stack::StackKernel;
 
 use crate::{
     dt_model::{BatchedInput, Input},
-    trait_helpers::{batch_inputs, game_to_inputs},
+    trait_helpers::{batch_inputs, game_to_inputs, get_batch_from_fn},
     DTModel, DTModelWrapper,
 };
 
@@ -80,52 +80,16 @@ pub trait GetOfflineData<
         D,
         NoneTape,
     >, [Self::Action; B]){
-        let dev: D = Default::default();
-        let mut batch: [Input<
-            { Self::EPISODES_IN_SEQ },
-            { Self::STATE_SIZE },
-            { Self::ACTION_SIZE },
-            E,
-            D,
-            NoneTape,
-        >; B] = std::array::from_fn(|_| (dev.zeros(), dev.zeros(), dev.zeros(), dev.zeros()));
-
-        let mut num_examples = 0;
-        let mut true_actions: [Option<Self::Action>; B] = std::array::from_fn(|_| None);
-        let mut num_actions = 0;
-
-        while num_examples < B {
-            // Play one game
-            let (states, actions) = Self::play_one_game(rng);
-
-            // Update true actions (for training)
-            for action in actions.iter() {
-                if num_actions == B { break; }
-                true_actions[num_actions] = Some(action.clone());
-                num_actions += 1;
-            }
-
-            // Turn into tensor inputs
-            let mut inputs = game_to_inputs(states, actions, &dev);
-
-            // Throw away inputs above size B
-            let len = inputs.len();
-            inputs.truncate(B - num_examples);
-
-            // Add the examples to the batch
-            for (i, input) in inputs.into_iter().enumerate() {
-                let batch_i = num_examples + i;
-                batch[batch_i] = input;
-            }
-
-            // Mark down the number added
-            num_examples += len;
-        }
-
-        let true_actions = true_actions.map(|inner| inner.unwrap());
-
-        let batched_inputs = batch_inputs(batch, &dev);
-
-        (batched_inputs, true_actions)
+        get_batch_from_fn(rng, Self::play_one_game)
     }
+}
+
+pub trait HumanEvaluatable<
+    E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
+    D: Device<E>,
+>: DTState<E, D>
+{
+    fn print(&self);
+    fn print_action(action: &Self::Action);
+    fn is_still_playing(&self) -> bool;
 }

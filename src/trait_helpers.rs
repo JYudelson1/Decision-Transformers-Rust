@@ -1,6 +1,6 @@
 use std::array;
 
-use crate::{trait_helpers::stack::StackKernel, DTModel};
+use crate::{state_trait::HumanEvaluatable, trait_helpers::stack::StackKernel, DTModel, GetOfflineData};
 use dfdx::prelude::*;
 use num_traits::Float;
 use rand_distr::uniform::SampleUniform;
@@ -144,3 +144,115 @@ where
     [(); Game::MAX_EPISODES_IN_GAME]: Sized,
     [(); Game::ACTION_SIZE]: Sized,
     [(); Game::STATE_SIZE]: Sized;
+
+impl<
+        E: Dtype
+            + From<f32>
+            + num_traits::Float
+            + rand_distr::uniform::SampleUniform
+            + for<'a> std::ops::AddAssign<&'a E>,
+        D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>,
+        Game: DTState<E, D> + HumanEvaluatable<E, D>,
+    > DTModelWrapper<E, D, Game>
+where
+    [(); Game::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Game::EPISODES_IN_SEQ]: Sized,
+    [(); Game::ACTION_SIZE]: Sized,
+    [(); Game::STATE_SIZE]: Sized,
+    [(); 3 * { Game::EPISODES_IN_SEQ }]: Sized,
+{
+    fn evaluate(&self, mut starting_state: Game) {
+        let mut state_history = vec![starting_state.clone()];
+        let mut action_history = vec![];
+
+        starting_state.print();
+
+        while starting_state.is_still_playing() {
+            let action = self.make_move(&state_history, &action_history, 1.0.into(), 5.0);
+            action_history.push(action.clone());
+
+            Game::print_action(&action);
+
+            starting_state.apply_action(action);
+            state_history.push(starting_state.clone());
+
+            starting_state.print()
+        }
+    }
+}
+
+pub fn get_batch_from_fn<
+    const B: usize,
+    R: rand::Rng + ?Sized,
+    F,
+    E: Dtype + From<f32> + Float + SampleUniform,
+    D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>,
+    Game: DTState<E, D>,
+>(
+    rng: &mut R,
+    player_fn: F,
+) -> (
+    BatchedInput<
+        { Game::EPISODES_IN_SEQ },
+        B,
+        { Game::STATE_SIZE },
+        { Game::ACTION_SIZE },
+        E,
+        D,
+        NoneTape,
+    >,
+    [Game::Action; B],
+)
+where
+    F: Fn(&mut R) -> (Vec<Game>, Vec<Game::Action>),
+{
+    let dev: D = Default::default();
+    let mut batch: [Input<
+        { Game::EPISODES_IN_SEQ },
+        { Game::STATE_SIZE },
+        { Game::ACTION_SIZE },
+        E,
+        D,
+        NoneTape,
+    >; B] = std::array::from_fn(|_| (dev.zeros(), dev.zeros(), dev.zeros(), dev.zeros()));
+
+    let mut num_examples = 0;
+    let mut true_actions: [Option<Game::Action>; B] = std::array::from_fn(|_| None);
+    let mut num_actions = 0;
+
+    while num_examples < B {
+        // Play one game
+        let (states, actions) = player_fn(rng);
+
+        // Update true actions (for training)
+        for action in actions.iter() {
+            if num_actions == B {
+                break;
+            }
+            true_actions[num_actions] = Some(action.clone());
+            num_actions += 1;
+        }
+
+        // Turn into tensor inputs
+        let mut inputs = game_to_inputs(states, actions, &dev);
+
+        // Throw away inputs above size B
+        let len = inputs.len();
+        inputs.truncate(B - num_examples);
+
+        // Add the examples to the batch
+        for (i, input) in inputs.into_iter().enumerate() {
+            let batch_i = num_examples + i;
+            batch[batch_i] = input;
+        }
+
+        // Mark down the number added
+        num_examples += len;
+    }
+
+    let true_actions = true_actions.map(|inner| inner.unwrap());
+
+    let batched_inputs = batch_inputs(batch, &dev);
+
+    (batched_inputs, true_actions)
+}
