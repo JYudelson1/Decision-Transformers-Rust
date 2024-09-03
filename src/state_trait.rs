@@ -1,11 +1,7 @@
 use dfdx::prelude::*;
 use stack::StackKernel;
 
-use crate::{
-    dt_model::{BatchedInput, Input},
-    trait_helpers::{batch_inputs, game_to_inputs, get_batch_from_fn},
-    DTModel, DTModelWrapper,
-};
+use crate::{dt_model::BatchedInput, trait_helpers::get_batch_from_fn, DTModel, DTModelWrapper};
 
 pub trait DTState<
     E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,

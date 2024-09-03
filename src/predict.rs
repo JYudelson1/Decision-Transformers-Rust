@@ -142,7 +142,6 @@ where
         let logits: Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D> =
             out.select(dev.tensor(Game::EPISODES_IN_SEQ - 1)) / temperature;
         let probs: Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D> = logits.softmax();
-        println!("Probs: {:?}", probs.as_vec());
 
         let mut options = vec![];
 

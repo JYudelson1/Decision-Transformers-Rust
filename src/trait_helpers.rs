@@ -1,8 +1,6 @@
 use std::array;
 
-use crate::{
-    state_trait::HumanEvaluatable, trait_helpers::stack::StackKernel, DTModel, GetOfflineData,
-};
+use crate::{state_trait::HumanEvaluatable, trait_helpers::stack::StackKernel, DTModel};
 use dfdx::{optim::Adam, prelude::*};
 use num_traits::Float;
 use rand_distr::uniform::SampleUniform;
