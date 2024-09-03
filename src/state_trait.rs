@@ -1,11 +1,12 @@
 use dfdx::prelude::*;
+use stack::StackKernel;
 
 use crate::{
     dt_model::{BatchedInput, Input},
     trait_helpers::{batch_inputs, game_to_inputs},
 };
 
-pub trait DTState<E: Dtype, D: Device<E>>: Clone {
+pub trait DTState<E: Dtype + From<f32>, D: Device<E>>: Clone {
     type Action: Clone;
     const STATE_SIZE: usize;
     const ACTION_SIZE: usize;
@@ -20,11 +21,13 @@ pub trait DTState<E: Dtype, D: Device<E>>: Clone {
     fn action_to_tensor(action: &Self::Action) -> Tensor<(Const<{ Self::ACTION_SIZE }>,), E, D>;
 }
 
-pub trait GetOfflineData<E: Dtype, D: Device<E> + dfdx::tensor::ZerosTensor<usize>>:
+pub trait GetOfflineData<E: Dtype + From<f32>, D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>>:
     DTState<E, D>
 {
+    /// Required method
     fn play_one_game<R: rand::Rng + ?Sized>(rng: &mut R) -> (Vec<Self>, Vec<Self::Action>);
 
+    /// Provided method
     fn get_batch<const B: usize, R: rand::Rng + ?Sized>(
         rng: &mut R,
     ) -> BatchedInput<
