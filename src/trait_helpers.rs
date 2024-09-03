@@ -12,16 +12,16 @@ use crate::{
 };
 
 pub fn batch_inputs<
-    const MAX_EPISODES_IN_SEQ: usize,
+    const EPISODES_IN_SEQ: usize,
     const B: usize,
     const S: usize,
     const A: usize,
     E: Dtype,
     D: Device<E> + StackKernel<usize> + dfdx::tensor::ZerosTensor<usize>,
 >(
-    inputs: [Input<MAX_EPISODES_IN_SEQ, S, A, E, D, NoneTape>; B],
+    inputs: [Input<EPISODES_IN_SEQ, S, A, E, D, NoneTape>; B],
     device: &D,
-) -> BatchedInput<MAX_EPISODES_IN_SEQ, B, S, A, E, D, NoneTape> {
+) -> BatchedInput<EPISODES_IN_SEQ, B, S, A, E, D, NoneTape> {
     let mut states = array::from_fn(|_| device.zeros());
     let mut actions = array::from_fn(|_| device.zeros());
     let mut rewards = array::from_fn(|_| device.zeros());
@@ -48,7 +48,7 @@ pub fn game_to_inputs<E: Dtype + From<f32>+ num_traits::Float + rand_distr::unif
     dev: &D
 ) -> Vec<
     Input<
-        { Game::MAX_EPISODES_IN_SEQ },
+        { Game::EPISODES_IN_SEQ },
         { Game::STATE_SIZE },
         { Game::ACTION_SIZE },
         E,
@@ -60,13 +60,13 @@ pub fn game_to_inputs<E: Dtype + From<f32>+ num_traits::Float + rand_distr::unif
 
     let rewards_to_go = get_rewards_to_go(&states, &actions);
 
-    let mut actions_in_seq: [Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>;
-        Game::MAX_EPISODES_IN_SEQ] = std::array::from_fn(|_| dev.zeros());
-    let mut states_in_seq: [Tensor<(Const<{ Game::STATE_SIZE }>,), E, D>;
-        Game::MAX_EPISODES_IN_SEQ] = std::array::from_fn(|_| dev.zeros());
-    let mut rtg_in_seq: [Tensor<(Const<1>,), E, D>; Game::MAX_EPISODES_IN_SEQ] =
+    let mut actions_in_seq: [Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::EPISODES_IN_SEQ] =
         std::array::from_fn(|_| dev.zeros());
-    let mut timesteps_in_seq: [Tensor<(), usize, D>; Game::MAX_EPISODES_IN_SEQ] =
+    let mut states_in_seq: [Tensor<(Const<{ Game::STATE_SIZE }>,), E, D>; Game::EPISODES_IN_SEQ] =
+        std::array::from_fn(|_| dev.zeros());
+    let mut rtg_in_seq: [Tensor<(Const<1>,), E, D>; Game::EPISODES_IN_SEQ] =
+        std::array::from_fn(|_| dev.zeros());
+    let mut timesteps_in_seq: [Tensor<(), usize, D>; Game::EPISODES_IN_SEQ] =
         std::array::from_fn(|_| dev.zeros());
 
     for (i, (state, action)) in states.into_iter().zip(actions.into_iter()).enumerate() {
@@ -97,8 +97,13 @@ pub fn game_to_inputs<E: Dtype + From<f32>+ num_traits::Float + rand_distr::unif
     inputs
 }
 
-fn next_sequence<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform, D: Device<E>, Game: DTState<E, D>, T>(
-    seq: &mut [T; Game::MAX_EPISODES_IN_SEQ],
+fn next_sequence<
+    E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
+    D: Device<E>,
+    Game: DTState<E, D>,
+    T,
+>(
+    seq: &mut [T; Game::EPISODES_IN_SEQ],
     new_last_element: T,
 ) {
     seq.rotate_left(1);
@@ -122,9 +127,9 @@ fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::unifo
 }
 
 fn masked_actions<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform, D: Device<E>, Game: DTState<E, D>>(
-    seq: &[Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::MAX_EPISODES_IN_SEQ],
+    seq: &[Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::EPISODES_IN_SEQ],
     dev: &D,
-) -> [Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::MAX_EPISODES_IN_SEQ] {
+) -> [Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::EPISODES_IN_SEQ]{
     let mut new_seq = seq.clone();
     new_seq[new_seq.len() - 1] = dev.zeros();
     new_seq
@@ -134,8 +139,8 @@ pub struct DTModelWrapper<
     E: Dtype + From<f32> + Float + SampleUniform,
     D: Device<E>,
     Game: DTState<E, D>,
->(pub DTModel<{ Game::MAX_EPISODES_IN_SEQ }, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>)
+>(pub DTModel<{ Game::MAX_EPISODES_IN_GAME }, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>)
 where
-    [(); Game::MAX_EPISODES_IN_SEQ]: Sized,
+    [(); Game::MAX_EPISODES_IN_GAME]: Sized,
     [(); Game::ACTION_SIZE]: Sized,
     [(); Game::STATE_SIZE]: Sized;

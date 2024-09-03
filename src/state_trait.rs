@@ -15,7 +15,8 @@ pub trait DTState<
     type Action: Clone;
     const STATE_SIZE: usize;
     const ACTION_SIZE: usize;
-    const MAX_EPISODES_IN_SEQ: usize;
+    const EPISODES_IN_SEQ: usize;
+    const MAX_EPISODES_IN_GAME: usize;
 
     // Required method
     fn apply_action(&mut self, action: Self::Action);
@@ -31,13 +32,13 @@ pub trait DTState<
 
     // Provided method
     fn build_model() -> DTModelWrapper<E, D, Self>
-    where [(); Self::MAX_EPISODES_IN_SEQ]: Sized,
+    where [(); Self::MAX_EPISODES_IN_GAME]: Sized,
     [(); Self::ACTION_SIZE]: Sized,
     [(); Self::STATE_SIZE]: Sized,
     {
         let dev: D = Default::default();
         let mut model = DTModel::<
-            { Self::MAX_EPISODES_IN_SEQ },
+            { Self::MAX_EPISODES_IN_GAME },
             { Self::STATE_SIZE },
             { Self::ACTION_SIZE },
             E,
@@ -48,7 +49,11 @@ pub trait DTState<
     }
 }
 
-pub trait GetOfflineData<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform, D: Device<E> + ZerosTensor<usize> + StackKernel<usize>>: DTState<E, D> {
+pub trait GetOfflineData<
+    E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
+    D: Device<E> + ZerosTensor<usize> + StackKernel<usize>,
+>: DTState<E, D>
+{
     /// Required method
     fn play_one_game<R: rand::Rng + ?Sized>(rng: &mut R) -> (Vec<Self>, Vec<Self::Action>);
 
@@ -56,7 +61,7 @@ pub trait GetOfflineData<E: Dtype + From<f32>+ num_traits::Float + rand_distr::u
     fn get_batch<const B: usize, R: rand::Rng + ?Sized>(
         rng: &mut R,
     ) -> (BatchedInput<
-        { Self::MAX_EPISODES_IN_SEQ },
+        { Self::EPISODES_IN_SEQ },
         B,
         { Self::STATE_SIZE },
         { Self::ACTION_SIZE },
@@ -66,7 +71,7 @@ pub trait GetOfflineData<E: Dtype + From<f32>+ num_traits::Float + rand_distr::u
     >, [Self::Action; B]){
         let dev: D = Default::default();
         let mut batch: [Input<
-            { Self::MAX_EPISODES_IN_SEQ },
+            { Self::EPISODES_IN_SEQ },
             { Self::STATE_SIZE },
             { Self::ACTION_SIZE },
             E,
@@ -84,6 +89,7 @@ pub trait GetOfflineData<E: Dtype + From<f32>+ num_traits::Float + rand_distr::u
 
             // Update true actions (for training)
             for action in actions.iter() {
+                if num_actions == B { break; }
                 true_actions[num_actions] = Some(action.clone());
                 num_actions += 1;
             }
