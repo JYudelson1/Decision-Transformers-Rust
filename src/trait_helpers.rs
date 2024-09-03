@@ -1,7 +1,9 @@
 use std::array;
 
-use crate::{state_trait::HumanEvaluatable, trait_helpers::stack::StackKernel, DTModel, GetOfflineData};
-use dfdx::prelude::*;
+use crate::{
+    state_trait::HumanEvaluatable, trait_helpers::stack::StackKernel, DTModel, GetOfflineData,
+};
+use dfdx::{optim::Adam, prelude::*};
 use num_traits::Float;
 use rand_distr::uniform::SampleUniform;
 
@@ -161,7 +163,7 @@ where
     [(); Game::STATE_SIZE]: Sized,
     [(); 3 * { Game::EPISODES_IN_SEQ }]: Sized,
 {
-    fn evaluate(&self, mut starting_state: Game) {
+    pub fn evaluate(&self, mut starting_state: Game) {
         let mut state_history = vec![starting_state.clone()];
         let mut action_history = vec![];
 
@@ -178,6 +180,32 @@ where
 
             starting_state.print()
         }
+    }
+
+    fn play_one_game<R: rand::Rng + ?Sized>(&self, temp: E, desired_reward: f32, rng: &mut R) -> (Vec<Game>, Vec<Game::Action>) {
+        let mut states = vec![];
+        let mut actions = vec![];
+
+        let mut state = Game::new_random(rng);
+        while state.is_still_playing() {
+            states.push(state.clone());
+            let action = self.make_move(&states, &actions, temp, desired_reward);
+            actions.push(action.clone());
+            state.apply_action(action);
+        }
+        (states, actions)
+    }
+
+    pub fn online_learn<const B: usize, R: rand::Rng + ?Sized>(&mut self, temp: E, desired_reward: f32, optimizer: &mut Adam<
+        DTModel<{ Game::MAX_EPISODES_IN_GAME }, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>,
+        E,
+        D,
+    >,
+    dev: &D,
+    rng: &mut R) -> E{
+        let (batch, actual) = get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng));
+
+        self.train_on_batch::<B>(batch, actual, optimizer, dev)
     }
 }
 

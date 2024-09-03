@@ -19,6 +19,9 @@ pub trait DTState<
     const MAX_EPISODES_IN_GAME: usize;
 
     /// Required method
+    fn new_random<R: rand::Rng + ?Sized>(rng: &mut R) -> Self;
+
+    /// Required method
     fn apply_action(&mut self, action: Self::Action);
 
     /// Required method
