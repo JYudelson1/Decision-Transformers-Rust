@@ -85,7 +85,7 @@ pub fn game_to_inputs<E: Dtype + From<f32>, D: Device<E> + dfdx::tensor::ZerosTe
 
         let input = (
             states_in_seq.clone().stack(),
-            actions_in_seq.clone().stack(),
+            masked_actions(&actions_in_seq, dev).stack(),
             rtg_in_seq.clone().stack(),
             timesteps_in_seq.clone().stack(),
         );
@@ -117,4 +117,13 @@ fn get_rewards_to_go<E: Dtype + From<f32>, D: Device<E>, Game: DTState<E, D>>(
     }
     backwards_rewards.reverse();
     backwards_rewards
+}
+
+fn masked_actions<E: Dtype + From<f32>, D: Device<E>, Game: DTState<E, D>>(
+    seq: &[Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::MAX_EPISODES_IN_SEQ],
+    dev: &D,
+) -> [Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::MAX_EPISODES_IN_SEQ] {
+    let mut new_seq = seq.clone();
+    new_seq[new_seq.len() - 1] = dev.zeros();
+    new_seq
 }

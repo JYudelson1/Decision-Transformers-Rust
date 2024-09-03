@@ -21,8 +21,10 @@ pub trait DTState<E: Dtype + From<f32>, D: Device<E>>: Clone {
     fn action_to_tensor(action: &Self::Action) -> Tensor<(Const<{ Self::ACTION_SIZE }>,), E, D>;
 }
 
-pub trait GetOfflineData<E: Dtype + From<f32>, D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>>:
-    DTState<E, D>
+pub trait GetOfflineData<
+    E: Dtype + From<f32>,
+    D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>,
+>: DTState<E, D>
 {
     /// Required method
     fn play_one_game<R: rand::Rng + ?Sized>(rng: &mut R) -> (Vec<Self>, Vec<Self::Action>);
@@ -30,7 +32,7 @@ pub trait GetOfflineData<E: Dtype + From<f32>, D: Device<E> + dfdx::tensor::Zero
     /// Provided method
     fn get_batch<const B: usize, R: rand::Rng + ?Sized>(
         rng: &mut R,
-    ) -> BatchedInput<
+    ) -> (BatchedInput<
         { Self::MAX_EPISODES_IN_SEQ },
         B,
         { Self::STATE_SIZE },
@@ -38,7 +40,7 @@ pub trait GetOfflineData<E: Dtype + From<f32>, D: Device<E> + dfdx::tensor::Zero
         E,
         D,
         NoneTape,
-    >{
+    >, [Self::Action; B]){
         let dev: D = Default::default();
         let mut batch: [Input<
             { Self::MAX_EPISODES_IN_SEQ },
@@ -50,10 +52,20 @@ pub trait GetOfflineData<E: Dtype + From<f32>, D: Device<E> + dfdx::tensor::Zero
         >; B] = std::array::from_fn(|_| (dev.zeros(), dev.zeros(), dev.zeros(), dev.zeros()));
 
         let mut num_examples = 0;
+        let mut true_actions: [Option<Self::Action>; B] = std::array::from_fn(|_| None);
+        let mut num_actions = 0;
 
         while num_examples < B {
             // Play one game
             let (states, actions) = Self::play_one_game(rng);
+
+            // Update true actions (for training)
+            for action in actions.iter() {
+                true_actions[num_actions] = Some(action.clone());
+                num_actions += 1;
+            }
+
+            // Turn into tensor inputs
             let mut inputs = game_to_inputs(states, actions, &dev);
 
             // Throw away inputs above size B
@@ -70,6 +82,10 @@ pub trait GetOfflineData<E: Dtype + From<f32>, D: Device<E> + dfdx::tensor::Zero
             num_examples += len;
         }
 
-        batch_inputs(batch, &dev)
+        let true_actions = true_actions.map(|inner| inner.unwrap());
+
+        let batched_inputs = batch_inputs(batch, &dev);
+
+        (batched_inputs, true_actions)
     }
 }

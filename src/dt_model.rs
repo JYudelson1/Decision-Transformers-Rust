@@ -250,6 +250,68 @@ where
     }
 }
 
+// Batched Module
+impl<
+        const MAX_EPISODES_IN_SEQ: usize,
+        const S: usize,
+        const A: usize,
+        const B: usize,
+        T: Tape<E, D>,
+        E: Dtype,
+        D: Device<E> + DeviceBuildExt,
+    > Module<BatchedInput<MAX_EPISODES_IN_SEQ, B, S, A, E, D, T>>
+    for DTModel<MAX_EPISODES_IN_SEQ, S, A, E, D>
+where
+    [(); 3 * MAX_EPISODES_IN_SEQ]: Sized,
+{
+    type Output = Tensor<(Const<B>, Const<MAX_EPISODES_IN_SEQ>, Const<A>), E, D, T>;
+
+    type Error = ();
+
+    fn try_forward(
+        &self,
+        input: BatchedInput<MAX_EPISODES_IN_SEQ, B, S, A, E, D, T>,
+    ) -> Result<Self::Output, Self::Error> {
+        let (states, actions, rewards, timesteps) = input;
+        let dev: D = Default::default();
+
+        let states = self.state_head.forward(states);
+        let actions = self.action_head.forward(actions);
+        let rewards = self.return_head.forward(rewards);
+
+        let times = self.time_embeddings.forward(timesteps);
+
+        let rewards = rewards + times.clone();
+        let actions = actions + times.clone();
+        let states = states + times;
+
+        let stacked = [rewards, states, actions]
+            .stack()
+            .permute::<_, Axes4<0, 2, 1, 3>>()
+            .reshape::<(Const<B>, Const<{ 3 * MAX_EPISODES_IN_SEQ }>, Const<HIDDEN>)>();
+
+        let input: Tensor<(Const<B>, Const<{ 3 * MAX_EPISODES_IN_SEQ }>, Const<HIDDEN>), E, D, T> =
+            dev.build_module::<LN, E>().forward(stacked);
+
+        // let zeroes: Tensor<(Const<{ 3 * MAX_EPISODES_IN_SEQ }>, Const<256>), E, D, _> = dev.zeros_like(&input);
+        // let t_out = self.transformer.forward_mut((zeroes, input));
+
+        let out = input
+            .reshape::<(
+                Const<B>,
+                Const<MAX_EPISODES_IN_SEQ>,
+                Const<3>,
+                Const<HIDDEN>,
+            )>()
+            .permute::<_, Axes4<0, 2, 1, 3>>();
+
+        let actions = self.predict_action.forward(out.select(dev.tensor([2; B]))); // TOOD: Check correctness
+
+        Ok(actions)
+    }
+}
+
+
 // Batched Module Mut
 impl<
         const MAX_EPISODES_IN_SEQ: usize,
