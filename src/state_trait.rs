@@ -4,7 +4,7 @@ use stack::StackKernel;
 use crate::{
     dt_model::{BatchedInput, Input},
     trait_helpers::{batch_inputs, game_to_inputs},
-    DTModel,
+    DTModel, DTModelWrapper,
 };
 
 pub trait DTState<
@@ -30,8 +30,10 @@ pub trait DTState<
     fn action_to_tensor(action: &Self::Action) -> Tensor<(Const<{ Self::ACTION_SIZE }>,), E, D>;
 
     // Provided method
-    fn build_model(
-    ) -> DTModel<{ Self::MAX_EPISODES_IN_SEQ }, { Self::STATE_SIZE }, { Self::ACTION_SIZE }, E, D>
+    fn build_model() -> DTModelWrapper<E, D, Self>
+    where [(); Self::MAX_EPISODES_IN_SEQ]: Sized,
+    [(); Self::ACTION_SIZE]: Sized,
+    [(); Self::STATE_SIZE]: Sized,
     {
         let dev: D = Default::default();
         let mut model = DTModel::<
@@ -39,10 +41,10 @@ pub trait DTState<
             { Self::STATE_SIZE },
             { Self::ACTION_SIZE },
             E,
-            D
+            D,
         >::build(&dev);
         model.reset_params();
-        model
+        DTModelWrapper(model)
     }
 }
 

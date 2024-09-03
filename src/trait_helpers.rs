@@ -1,7 +1,9 @@
 use std::array;
 
-use crate::trait_helpers::stack::StackKernel;
+use crate::{trait_helpers::stack::StackKernel, DTModel};
 use dfdx::prelude::*;
+use num_traits::Float;
+use rand_distr::uniform::SampleUniform;
 
 use crate::{
     dt_model::{BatchedInput, Input},
@@ -127,3 +129,13 @@ fn masked_actions<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform:
     new_seq[new_seq.len() - 1] = dev.zeros();
     new_seq
 }
+
+pub struct DTModelWrapper<
+    E: Dtype + From<f32> + Float + SampleUniform,
+    D: Device<E>,
+    Game: DTState<E, D>,
+>(pub DTModel<{ Game::MAX_EPISODES_IN_SEQ }, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>)
+where
+    [(); Game::MAX_EPISODES_IN_SEQ]: Sized,
+    [(); Game::ACTION_SIZE]: Sized,
+    [(); Game::STATE_SIZE]: Sized;
