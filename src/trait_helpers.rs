@@ -99,7 +99,7 @@ fn next_sequence<E: Dtype + From<f32>, D: Device<E>, Game: DTState<E, D>, T>(
     seq: &mut [T; Game::MAX_EPISODES_IN_SEQ],
     new_last_element: T,
 ) {
-    seq.rotate_right(1);
+    seq.rotate_left(1);
     seq[seq.len() - 1] = new_last_element;
 }
 
