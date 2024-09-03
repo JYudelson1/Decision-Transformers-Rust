@@ -4,28 +4,49 @@ use stack::StackKernel;
 use crate::{
     dt_model::{BatchedInput, Input},
     trait_helpers::{batch_inputs, game_to_inputs},
+    DTModel,
 };
 
-pub trait DTState<E: Dtype + From<f32>, D: Device<E>>: Clone {
+pub trait DTState<
+    E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
+    D: Device<E>,
+>: Clone
+{
     type Action: Clone;
     const STATE_SIZE: usize;
     const ACTION_SIZE: usize;
     const MAX_EPISODES_IN_SEQ: usize;
 
+    // Required method
     fn apply_action(&mut self, action: Self::Action);
 
+    // Required method
     fn get_reward(&self, action: Self::Action) -> f32;
 
+    // Required method
     fn to_tensor(&self) -> Tensor<(Const<{ Self::STATE_SIZE }>,), E, D>;
 
+    // Required method
     fn action_to_tensor(action: &Self::Action) -> Tensor<(Const<{ Self::ACTION_SIZE }>,), E, D>;
+
+    // Provided method
+    fn build_model(
+    ) -> DTModel<{ Self::MAX_EPISODES_IN_SEQ }, { Self::STATE_SIZE }, { Self::ACTION_SIZE }, E, D>
+    {
+        let dev: D = Default::default();
+        let mut model = DTModel::<
+            { Self::MAX_EPISODES_IN_SEQ },
+            { Self::STATE_SIZE },
+            { Self::ACTION_SIZE },
+            E,
+            D
+        >::build(&dev);
+        model.reset_params();
+        model
+    }
 }
 
-pub trait GetOfflineData<
-    E: Dtype + From<f32>,
-    D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>,
->: DTState<E, D>
-{
+pub trait GetOfflineData<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform, D: Device<E> + ZerosTensor<usize> + StackKernel<usize>>: DTState<E, D> {
     /// Required method
     fn play_one_game<R: rand::Rng + ?Sized>(rng: &mut R) -> (Vec<Self>, Vec<Self::Action>);
 

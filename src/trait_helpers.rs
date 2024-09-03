@@ -40,7 +40,7 @@ pub fn batch_inputs<
     )
 }
 
-pub fn game_to_inputs<E: Dtype + From<f32>, D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>, Game: DTState<E, D>>(
+pub fn game_to_inputs<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform, D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>, Game: DTState<E, D>>(
     states: Vec<Game>,
     actions: Vec<Game::Action>,
     dev: &D
@@ -95,7 +95,7 @@ pub fn game_to_inputs<E: Dtype + From<f32>, D: Device<E> + dfdx::tensor::ZerosTe
     inputs
 }
 
-fn next_sequence<E: Dtype + From<f32>, D: Device<E>, Game: DTState<E, D>, T>(
+fn next_sequence<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform, D: Device<E>, Game: DTState<E, D>, T>(
     seq: &mut [T; Game::MAX_EPISODES_IN_SEQ],
     new_last_element: T,
 ) {
@@ -103,7 +103,7 @@ fn next_sequence<E: Dtype + From<f32>, D: Device<E>, Game: DTState<E, D>, T>(
     seq[seq.len() - 1] = new_last_element;
 }
 
-fn get_rewards_to_go<E: Dtype + From<f32>, D: Device<E>, Game: DTState<E, D>>(
+fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform , D: Device<E>, Game: DTState<E, D>>(
     states: &Vec<Game>,
     actions: &Vec<Game::Action>,
 ) -> Vec<f32> {
@@ -119,7 +119,7 @@ fn get_rewards_to_go<E: Dtype + From<f32>, D: Device<E>, Game: DTState<E, D>>(
     backwards_rewards
 }
 
-fn masked_actions<E: Dtype + From<f32>, D: Device<E>, Game: DTState<E, D>>(
+fn masked_actions<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform, D: Device<E>, Game: DTState<E, D>>(
     seq: &[Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::MAX_EPISODES_IN_SEQ],
     dev: &D,
 ) -> [Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::MAX_EPISODES_IN_SEQ] {
