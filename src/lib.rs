@@ -3,7 +3,6 @@
 
 mod dt_model;
 mod state_trait;
-mod sts;
 mod train;
 mod trait_helpers;
 
