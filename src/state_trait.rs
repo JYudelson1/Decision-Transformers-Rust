@@ -35,7 +35,7 @@ pub trait GetOfflineData<E: Dtype, D: Device<E> + dfdx::tensor::ZerosTensor<usiz
         E,
         D,
         NoneTape,
-    > {
+    >{
         let dev: D = Default::default();
         let mut batch: [Input<
             { Self::MAX_EPISODES_IN_SEQ },
@@ -51,7 +51,7 @@ pub trait GetOfflineData<E: Dtype, D: Device<E> + dfdx::tensor::ZerosTensor<usiz
         while num_examples < B {
             // Play one game
             let (states, actions) = Self::play_one_game(rng);
-            let mut inputs = game_to_inputs(states, actions);
+            let mut inputs = game_to_inputs(states, actions, &dev);
 
             // Throw away inputs above size B
             let len = inputs.len();
@@ -66,8 +66,6 @@ pub trait GetOfflineData<E: Dtype, D: Device<E> + dfdx::tensor::ZerosTensor<usiz
             // Mark down the number added
             num_examples += len;
         }
-
-        todo!();
 
         batch_inputs(batch, &dev)
     }

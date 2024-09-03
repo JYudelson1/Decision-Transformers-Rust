@@ -43,6 +43,7 @@ pub fn batch_inputs<
 pub fn game_to_inputs<E: Dtype, D: Device<E>, Game: DTState<E, D>>(
     states: Vec<Game>,
     actions: Vec<Game::Action>,
+    dev: &D
 ) -> Vec<
     Input<
         { Game::MAX_EPISODES_IN_SEQ },
@@ -52,6 +53,28 @@ pub fn game_to_inputs<E: Dtype, D: Device<E>, Game: DTState<E, D>>(
         D,
         NoneTape,
     >,
-> {
-    todo!()
+>{
+    let mut inputs = vec![];
+
+    todo!();
+    inputs
+}
+
+pub fn next_sequence<
+    const LEN: usize,
+    E: Dtype,
+    D: Device<E>,
+    Game: DTState<E, D>,
+    T: Tape<E, D>,
+>(
+    mut seq: [Tensor<(Const<{ Game::MAX_EPISODES_IN_SEQ }>, Const<LEN>), E, D, T>; {
+        Game::MAX_EPISODES_IN_SEQ
+    }],
+    new_last_element: Tensor<(Const<{ Game::MAX_EPISODES_IN_SEQ }>, Const<LEN>), E, D, T>,
+) -> [Tensor<(Const<{ Game::MAX_EPISODES_IN_SEQ }>, Const<LEN>), E, D, T>; {
+       Game::MAX_EPISODES_IN_SEQ
+   }] {
+    seq.rotate_right(1);
+    seq[seq.len() - 1] = new_last_element;
+    seq
 }
