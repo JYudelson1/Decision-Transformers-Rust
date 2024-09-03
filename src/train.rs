@@ -17,6 +17,7 @@ impl<
     where [(); Game::MAX_EPISODES_IN_GAME]: Sized,
     [(); Game::ACTION_SIZE]: Sized,
     [(); Game::STATE_SIZE]: Sized,
+    [(); 3 * Game::EPISODES_IN_SEQ]: Sized
 {
     pub fn train_on_batch<const B: usize>(
     &mut self, 
@@ -30,7 +31,7 @@ impl<
     >,
     actions: [Game::Action; B],
     optimizer: &mut Adam<
-        DTModel<{ Game::MAX_EPISODES_IN_GAME }, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>,
+        DTModel<{ Game::MAX_EPISODES_IN_GAME }, {Game::EPISODES_IN_SEQ},{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>,
         E,
         D,
     >,
@@ -70,6 +71,7 @@ impl<
 
     // apply gradients
     optimizer.update(&mut self.0, &grads);
+
 
     loss_value
     }

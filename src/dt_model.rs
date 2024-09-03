@@ -1,5 +1,6 @@
-//use dfdx::nn::builders::{AddInto, Embedding, LayerNorm1D, Linear, TransformerDecoder};
 use dfdx::prelude::*;
+
+use crate::transformer::CustomTransformerDecoder;
 
 const HIDDEN: usize = 256;
 
@@ -14,8 +15,7 @@ type LN = dfdx::nn::builders::LayerNorm1D<HIDDEN>;
 type ActionPredictor<const A: usize, E, D> = dfdx::nn::modules::Linear<HIDDEN, A, E, D>;
 //type ReturnPredictor = dfdx::nn::modules::Linear<HIDDEN, 1, f32, STORAGE>;
 
-type DTTransformerInner<E, D> =
-    dfdx::nn::modules::TransformerDecoder<HIDDEN, 12, { 4 * HIDDEN }, 12, E, D>;
+type DTTransformerInner<const EPISODES_IN_SEQ: usize, E, D> = CustomTransformerDecoder<HIDDEN, {HIDDEN*4}, 12, 3, {3 * EPISODES_IN_SEQ}, E, D>;
 
 pub type States<const EPISODES_IN_SEQ: usize, const S: usize, E, D, T = NoneTape> =
     Tensor<(Const<EPISODES_IN_SEQ>, Const<S>), E, D, T>;
@@ -68,12 +68,15 @@ pub type BatchedInput<
 
 pub struct DTModel<
     const MAX_EPISODES_IN_GAME: usize,
+    const EPISODES_IN_SEQ: usize,
     const STATE: usize,
     const ACTION: usize,
     E: Dtype,
     D: Device<E>,
-> {
-    pub transformer: DTTransformerInner<E, D>,
+> where
+    [(); 3 * EPISODES_IN_SEQ]: Sized,
+{
+    pub transformer: DTTransformerInner<EPISODES_IN_SEQ, E, D>,
     pub state_head: StateHead<STATE, E, D>,
     pub action_head: ActionHead<ACTION, E, D>,
     pub return_head: ReturnHead<E, D>,
@@ -83,13 +86,15 @@ pub struct DTModel<
 // tensor Collections
 impl<
         const MAX_EPISODES_IN_GAME: usize,
+        const EPISODES_IN_SEQ: usize,
         const S: usize,
         const A: usize,
         E: Dtype + num_traits::Float + rand_distr::uniform::SampleUniform,
         D: Device<E>,
-    > TensorCollection<E, D> for DTModel<MAX_EPISODES_IN_GAME, S, A, E, D>
+    > TensorCollection<E, D> for DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E, D>
+    where [(); 3 * EPISODES_IN_SEQ]: Sized
 {
-    type To<E2: Dtype, D2: Device<E2>> = DTModel<MAX_EPISODES_IN_GAME, S, A, E2, D2>;
+    type To<E2: Dtype, D2: Device<E2>> = DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E2, D2>;
 
     fn iter_tensors<V: ModuleVisitor<Self, E, D>>(
         visitor: &mut V,
@@ -143,7 +148,7 @@ impl<
         T: Tape<E, D>,
         E: Dtype,
         D: Device<E> + DeviceBuildExt,
-    > Module<Input<EPISODES_IN_SEQ, S, A, E, D, T>> for DTModel<MAX_EPISODES_IN_GAME, S, A, E, D>
+    > Module<Input<EPISODES_IN_SEQ, S, A, E, D, T>> for DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E, D>
 where
     [(); 3 * EPISODES_IN_SEQ]: Sized,
 {
@@ -176,10 +181,9 @@ where
         let input: Tensor<(Const<{ 3 * EPISODES_IN_SEQ }>, Const<HIDDEN>), E, D, T> =
             dev.build_module::<LN, E>().forward(stacked);
 
-        // let zeroes: Tensor<(Const<{ 3 * EPISODES_IN_SEQ }>, Const<256>), E, D, _> = dev.zeros_like(&input);
-        // let t_out = self.transformer.forward_mut((zeroes, input));
+        let out = self.transformer.forward(input);
 
-        let out = input
+        let out = out
             .reshape::<(Const<EPISODES_IN_SEQ>, Const<3>, Const<HIDDEN>)>()
             .permute::<_, Axes3<1, 0, 2>>();
 
@@ -200,7 +204,7 @@ impl<
         E: Dtype,
         D: Device<E> + DeviceBuildExt,
     > Module<BatchedInput<EPISODES_IN_SEQ, B, S, A, E, D, T>>
-    for DTModel<MAX_EPISODES_IN_GAME, S, A, E, D>
+    for DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E, D>
 where
     [(); 3 * EPISODES_IN_SEQ]: Sized,
 {
@@ -233,10 +237,9 @@ where
         let input: Tensor<(Const<B>, Const<{ 3 * EPISODES_IN_SEQ }>, Const<HIDDEN>), E, D, T> =
             dev.build_module::<LN, E>().forward(stacked);
 
-        // let zeroes: Tensor<(Const<{ 3 * EPISODES_IN_SEQ }>, Const<256>), E, D, _> = dev.zeros_like(&input);
-        // let t_out = self.transformer.forward_mut((zeroes, input));
+        let out = self.transformer.forward(input);
 
-        let out = input
+        let out = out
             .reshape::<(
                 Const<B>,
                 Const<EPISODES_IN_SEQ>,
@@ -263,7 +266,7 @@ impl<
         E: Dtype,
         D: Device<E> + DeviceBuildExt,
     > ModuleMut<BatchedInput<EPISODES_IN_SEQ, B, S, A, E, D, T>>
-    for DTModel<MAX_EPISODES_IN_GAME, S, A, E, D>
+    for DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E, D>
 where
     [(); 3 * EPISODES_IN_SEQ]: Sized,
 {
@@ -296,10 +299,9 @@ where
         let input: Tensor<(Const<B>, Const<{ 3 * EPISODES_IN_SEQ }>, Const<HIDDEN>), E, D, T> =
             dev.build_module::<LN, E>().forward(stacked);
 
-        // let zeroes: Tensor<(Const<B>, Const<{ 3 * EPISODES_IN_SEQ }>, Const<HIDDEN>), E, D, _> = dev.zeros_like(&input);
-        // let t_out = self.transformer.forward_mut((input, zeroes));
+        let out = self.transformer.forward_mut(input);
 
-        let out = input
+        let out = out
             .reshape::<(
                 Const<B>,
                 Const<EPISODES_IN_SEQ>,

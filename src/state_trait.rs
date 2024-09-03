@@ -43,12 +43,14 @@ pub trait DTState<
     /// Provided method
     fn build_model() -> DTModelWrapper<E, D, Self>
     where [(); Self::MAX_EPISODES_IN_GAME]: Sized,
+    [(); 3 * Self::EPISODES_IN_SEQ]: Sized,
     [(); Self::ACTION_SIZE]: Sized,
     [(); Self::STATE_SIZE]: Sized,
     {
         let dev: D = Default::default();
         let mut model = DTModel::<
             { Self::MAX_EPISODES_IN_GAME },
+            {Self::EPISODES_IN_SEQ},
             { Self::STATE_SIZE },
             { Self::ACTION_SIZE },
             E,

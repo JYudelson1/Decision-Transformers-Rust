@@ -19,6 +19,7 @@ where
     [(); Game::EPISODES_IN_SEQ]: Sized,
     [(); Game::ACTION_SIZE]: Sized,
     [(); Game::STATE_SIZE]: Sized,
+    [(); 3 * Game::EPISODES_IN_SEQ]: Sized
 {
     pub fn make_move(
         &self,

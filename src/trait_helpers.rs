@@ -139,11 +139,12 @@ pub struct DTModelWrapper<
     E: Dtype + From<f32> + Float + SampleUniform,
     D: Device<E>,
     Game: DTState<E, D>,
->(pub DTModel<{ Game::MAX_EPISODES_IN_GAME }, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>)
+>(pub DTModel<{ Game::MAX_EPISODES_IN_GAME }, {Game::EPISODES_IN_SEQ},{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>)
 where
     [(); Game::MAX_EPISODES_IN_GAME]: Sized,
     [(); Game::ACTION_SIZE]: Sized,
-    [(); Game::STATE_SIZE]: Sized;
+    [(); Game::STATE_SIZE]: Sized,
+    [(); 3 * Game::EPISODES_IN_SEQ]: Sized;
 
 impl<
         E: Dtype
@@ -195,7 +196,7 @@ where
     }
 
     pub fn online_learn<const B: usize, R: rand::Rng + ?Sized>(&mut self, temp: E, desired_reward: f32, optimizer: &mut Adam<
-        DTModel<{ Game::MAX_EPISODES_IN_GAME }, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>,
+        DTModel<{ Game::MAX_EPISODES_IN_GAME }, {Game::EPISODES_IN_SEQ},{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>,
         E,
         D,
     >,
