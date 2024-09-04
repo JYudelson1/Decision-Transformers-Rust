@@ -203,22 +203,23 @@ impl<
         const MLP_INNER: usize,
         E: Dtype + Float,
         D: Device<E>,
-    > Module<Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
+        T: Tape<E, D>,
+    > Module<Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
     for DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>
 {
-    type Output = Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
+    type Output = Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
 
     type Error = D::Err;
 
     fn try_forward(
         &self,
-        input: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
+        input: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
     ) -> Result<Self::Output, Self::Error> {
         todo!();
     }
 }
 
-// Batched Module
+// Batched Mut
 impl<
         const SEQ_LEN: usize,
         const HIDDEN: usize,
@@ -227,16 +228,17 @@ impl<
         const B: usize,
         E: Dtype + Float,
         D: Device<E>,
-    > Module<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
+        T: Tape<E, D>,
+    > Module<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
     for DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>
 {
-    type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
+    type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
 
     type Error = D::Err;
 
     fn try_forward(
         &self,
-        input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
+        input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
     ) -> Result<Self::Output, Self::Error> {
         todo!()
     }
@@ -364,21 +366,22 @@ impl<
 impl<
         E: Dtype + Float,
         D: Device<E>,
+        T: Tape<E, D>,
         const HIDDEN: usize,
         const MLP_INNER: usize,
         const NUM_HEADS: usize,
         const NUM_LAYERS: usize,
         const SEQ_LEN: usize,
-    > Module<Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
+    > Module<Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
     for CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, E, D>
 {
-    type Output = Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
+    type Output = Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
 
     type Error = D::Err;
 
     fn try_forward(
         &self,
-        mut input: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
+        mut input: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
     ) -> Result<Self::Output, Self::Error> {
         for layer in &self.all_blocks {
             input = layer.forward(input);
@@ -391,22 +394,23 @@ impl<
 impl<
         E: Dtype + Float,
         D: Device<E>,
+        T: Tape<E, D>,
         const HIDDEN: usize,
         const MLP_INNER: usize,
         const NUM_HEADS: usize,
         const NUM_LAYERS: usize,
         const SEQ_LEN: usize,
         const B: usize,
-    > Module<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
+    > Module<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
     for CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, E, D>
 {
-    type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
+    type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
 
     type Error = D::Err;
 
     fn try_forward(
         &self,
-        mut input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
+        mut input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
     ) -> Result<Self::Output, Self::Error> {
         for layer in &self.all_blocks {
             input = layer.forward(input);
@@ -437,8 +441,8 @@ impl<
         &mut self,
         mut input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
     ) -> Result<Self::Output, Self::Error> {
-        for layer in &mut self.all_blocks {
-            input = layer.forward_mut(input);
+        for layer in &self.all_blocks {
+            input = layer.forward(input);
         }
         Ok(input)
     }
