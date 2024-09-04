@@ -1,22 +1,24 @@
 use dfdx::prelude::*;
 use num_traits::Float;
 
-use crate::transformer::CustomTransformerDecoder;
+use crate::{transformer::CustomTransformerDecoder, DTModelConfig};
 
-const HIDDEN: usize = 256;
+type TimeEmbed<Config: DTModelConfig, E, D> =
+    dfdx::nn::modules::Embedding<{ Config::MAX_EPISODES_IN_GAME }, { Config::HIDDEN_SIZE }, E, D>;
+type StateHead<Config: DTModelConfig, const S: usize, E, D> =
+    dfdx::nn::modules::Linear<S, { Config::HIDDEN_SIZE }, E, D>;
+type ActionHead<Config: DTModelConfig, const A: usize, E, D> =
+    dfdx::nn::modules::Linear<A, { Config::HIDDEN_SIZE }, E, D>;
+type ReturnHead<Config: DTModelConfig, E, D> =
+    dfdx::nn::modules::Linear<1, { Config::HIDDEN_SIZE }, E, D>;
+type LN<Config: DTModelConfig> = dfdx::nn::builders::LayerNorm1D<{Config::HIDDEN_SIZE}>;
 
-type TimeEmbed<const MAX_EPISODES_IN_GAME: usize, E, D> =
-    dfdx::nn::modules::Embedding<MAX_EPISODES_IN_GAME, HIDDEN, E, D>;
-type StateHead<const S: usize, E, D> = dfdx::nn::modules::Linear<S, HIDDEN, E, D>;
-type ActionHead<const A: usize, E, D> = dfdx::nn::modules::Linear<A, HIDDEN, E, D>;
-type ReturnHead<E, D> = dfdx::nn::modules::Linear<1, HIDDEN, E, D>;
-type LN = dfdx::nn::builders::LayerNorm1D<HIDDEN>;
+//type StatePredictor<const S: usize> = dfdx::nn::modules::Linear<{Config::HIDDEN_SIZE}, S, f32, STORAGE>;
+type ActionPredictor<Config: DTModelConfig, const A: usize, E, D> =
+    dfdx::nn::modules::Linear<{ Config::HIDDEN_SIZE }, A, E, D>;
+//type ReturnPredictor = dfdx::nn::modules::Linear<{Config::HIDDEN_SIZE}, 1, f32, STORAGE>;
 
-//type StatePredictor<const S: usize> = dfdx::nn::modules::Linear<HIDDEN, S, f32, STORAGE>;
-type ActionPredictor<const A: usize, E, D> = dfdx::nn::modules::Linear<HIDDEN, A, E, D>;
-//type ReturnPredictor = dfdx::nn::modules::Linear<HIDDEN, 1, f32, STORAGE>;
-
-type DTTransformerInner<const EPISODES_IN_SEQ: usize, E, D> = CustomTransformerDecoder<HIDDEN, {HIDDEN*4}, 12, 3, {3 * EPISODES_IN_SEQ}, E, D>;
+type DTTransformerInner<Config: DTModelConfig, E, D> = CustomTransformerDecoder<{Config::HIDDEN_SIZE}, {Config::MLP_INNER}, {Config::NUM_ATTENTION_HEADS}, {Config::NUM_LAYERS}, {3 * Config::SEQ_LEN}, E, D>;
 
 pub type States<const EPISODES_IN_SEQ: usize, const S: usize, E, D, T = NoneTape> =
     Tensor<(Const<EPISODES_IN_SEQ>, Const<S>), E, D, T>;
@@ -25,11 +27,11 @@ pub type Actions<const EPISODES_IN_SEQ: usize, const A: usize, E, D, T = NoneTap
 pub type RewardsToGo<const EPISODES_IN_SEQ: usize, E, D, T = NoneTape> =
     Tensor<(Const<EPISODES_IN_SEQ>, Const<1>), E, D, T>;
 pub type TimeSteps<const EPISODES_IN_SEQ: usize, D> = Tensor<(Const<EPISODES_IN_SEQ>,), usize, D>;
-pub type Input<const EPISODES_IN_SEQ: usize, const S: usize, const A: usize, E, D, T = NoneTape> = (
-    States<EPISODES_IN_SEQ, S, E, D, T>,
-    Actions<EPISODES_IN_SEQ, A, E, D, T>,
-    RewardsToGo<EPISODES_IN_SEQ, E, D, T>,
-    TimeSteps<EPISODES_IN_SEQ, D>,
+pub type Input<const S: usize, const A: usize, E, D, Config: DTModelConfig, T = NoneTape> = (
+    States<{Config::SEQ_LEN}, S, E, D, T>,
+    Actions<{Config::SEQ_LEN}, A, E, D, T>,
+    RewardsToGo<{Config::SEQ_LEN}, E, D, T>,
+    TimeSteps<{Config::SEQ_LEN}, D>,
 );
 
 pub type BatchedStates<
@@ -53,49 +55,59 @@ pub type BatchedRewardsToGo<const EPISODES_IN_SEQ: usize, const B: usize, E, D, 
 pub type BatchedTimeSteps<const EPISODES_IN_SEQ: usize, const B: usize, D> =
     Tensor<(Const<B>, Const<EPISODES_IN_SEQ>), usize, D>;
 pub type BatchedInput<
-    const EPISODES_IN_SEQ: usize,
     const B: usize,
     const S: usize,
     const A: usize,
     E,
     D,
+    Config: DTModelConfig,
     T = NoneTape,
 > = (
-    BatchedStates<EPISODES_IN_SEQ, B, S, E, D, T>,
-    BatchedActions<EPISODES_IN_SEQ, B, A, E, D, T>,
-    BatchedRewardsToGo<EPISODES_IN_SEQ, B, E, D, T>,
-    BatchedTimeSteps<EPISODES_IN_SEQ, B, D>,
+    BatchedStates<{Config::SEQ_LEN}, B, S, E, D, T>,
+    BatchedActions<{Config::SEQ_LEN}, B, A, E, D>,
+    BatchedRewardsToGo<{Config::SEQ_LEN}, B, E, D>,
+    BatchedTimeSteps<{Config::SEQ_LEN}, B, D>,
 );
 
 pub struct DTModel<
-    const MAX_EPISODES_IN_GAME: usize,
-    const EPISODES_IN_SEQ: usize,
+    Config: DTModelConfig,
     const STATE: usize,
     const ACTION: usize,
     E: Dtype,
     D: Device<E>,
 > where
-    [(); 3 * EPISODES_IN_SEQ]: Sized,
+    [(); 3 * Config::SEQ_LEN]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); Config::NUM_LAYERS]: Sized,
 {
-    pub transformer: DTTransformerInner<EPISODES_IN_SEQ, E, D>,
-    pub state_head: StateHead<STATE, E, D>,
-    pub action_head: ActionHead<ACTION, E, D>,
-    pub return_head: ReturnHead<E, D>,
-    pub predict_action: ActionPredictor<ACTION, E, D>,
-    pub time_embeddings: TimeEmbed<MAX_EPISODES_IN_GAME, E, D>,
+    pub transformer: DTTransformerInner<Config, E, D>,
+    pub state_head: StateHead<Config, STATE, E, D>,
+    pub action_head: ActionHead<Config, ACTION, E, D>,
+    pub return_head: ReturnHead<Config, E, D>,
+    pub predict_action: ActionPredictor<Config, ACTION, E, D>,
+    pub time_embeddings: TimeEmbed<Config, E, D>,
 }
 // tensor Collections
 impl<
-        const MAX_EPISODES_IN_GAME: usize,
-        const EPISODES_IN_SEQ: usize,
         const S: usize,
         const A: usize,
         E: Dtype + num_traits::Float + rand_distr::uniform::SampleUniform,
         D: Device<E>,
-    > TensorCollection<E, D> for DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E, D>
-    where [(); 3 * EPISODES_IN_SEQ]: Sized
+        Config: DTModelConfig
+    > TensorCollection<E, D> for DTModel<Config, S, A, E, D>
+    where
+    [(); 3 * Config::SEQ_LEN]: Sized,
+    [(); Config::SEQ_LEN]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::NUM_LAYERS]: Sized,
 {
-    type To<E2: Dtype, D2: Device<E2>> = DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E2, D2>;
+    type To<E2: Dtype, D2: Device<E2>> = DTModel<Config, S, A, E2, D2>;
 
     fn iter_tensors<V: ModuleVisitor<Self, E, D>>(
         visitor: &mut V,
@@ -142,24 +154,28 @@ impl<
 
 // Module for one input
 impl<
-        const EPISODES_IN_SEQ: usize,
-        const MAX_EPISODES_IN_GAME: usize,
         const S: usize,
         const A: usize,
-        T: Tape<E, D>,
         E: Dtype + Float,
         D: Device<E> + DeviceBuildExt,
-    > Module<Input<EPISODES_IN_SEQ, S, A, E, D, T>> for DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E, D>
+        Config: DTModelConfig
+    > Module<Input<S, A, E, D, Config>> for DTModel<Config, S, A, E, D>
 where
-    [(); 3 * EPISODES_IN_SEQ]: Sized,
+    [(); 3 * Config::SEQ_LEN]: Sized,
+    [(); Config::SEQ_LEN]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::NUM_LAYERS]: Sized,
 {
-    type Output = Tensor<(Const<EPISODES_IN_SEQ>, Const<A>), E, D, T>;
+    type Output = Tensor<(Const<{Config::SEQ_LEN}>, Const<A>), E, D>;
 
     type Error = ();
 
     fn try_forward(
         &self,
-        input: Input<EPISODES_IN_SEQ, S, A, E, D, T>,
+        input: Input<S, A, E, D, Config>,
     ) -> Result<Self::Output, Self::Error> {
         let (states, actions, rewards, timesteps) = input;
         let dev: D = Default::default();
@@ -177,15 +193,15 @@ where
         let stacked = [rewards, states, actions]
             .stack()
             .permute::<_, Axes3<1, 0, 2>>()
-            .reshape::<(Const<{ 3 * EPISODES_IN_SEQ }>, Const<HIDDEN>)>();
+            .reshape::<(Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>)>();
 
-        let input: Tensor<(Const<{ 3 * EPISODES_IN_SEQ }>, Const<HIDDEN>), E, D, T> =
-            dev.build_module::<LN, E>().forward(stacked);
+        let input: Tensor<(Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>), E, D> =
+            dev.build_module::<LN<Config>, E>().forward(stacked);
 
-        let out = self.transformer.forward(input);
+        // let out = self.transformer.forward(input);
 
-        let out = out
-            .reshape::<(Const<EPISODES_IN_SEQ>, Const<3>, Const<HIDDEN>)>()
+        let out = input
+            .reshape::<(Const<{Config::SEQ_LEN}>, Const<3>, Const<{Config::HIDDEN_SIZE}>)>()
             .permute::<_, Axes3<1, 0, 2>>();
 
         let actions = self.predict_action.forward(out.select(dev.tensor(2)));
@@ -196,26 +212,30 @@ where
 
 // Batched Module
 impl<
-        const EPISODES_IN_SEQ: usize,
-        const MAX_EPISODES_IN_GAME: usize,
         const S: usize,
         const A: usize,
         const B: usize,
-        T: Tape<E, D>,
         E: Dtype + Float,
         D: Device<E> + DeviceBuildExt,
-    > Module<BatchedInput<EPISODES_IN_SEQ, B, S, A, E, D, T>>
-    for DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E, D>
+        Config: DTModelConfig
+    > Module<BatchedInput<B, S, A, E, D, Config, NoneTape>>
+    for DTModel<Config, S, A, E, D>
 where
-    [(); 3 * EPISODES_IN_SEQ]: Sized,
+    [(); 3 * Config::SEQ_LEN]: Sized,
+    [(); Config::SEQ_LEN]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::NUM_LAYERS]: Sized,
 {
-    type Output = Tensor<(Const<B>, Const<EPISODES_IN_SEQ>, Const<A>), E, D, T>;
+    type Output = Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<A>), E, D, NoneTape>;
 
     type Error = ();
 
     fn try_forward(
         &self,
-        input: BatchedInput<EPISODES_IN_SEQ, B, S, A, E, D, T>,
+        input: BatchedInput<B, S, A, E, D, Config, NoneTape>,
     ) -> Result<Self::Output, Self::Error> {
         let (states, actions, rewards, timesteps) = input;
         let dev: D = Default::default();
@@ -227,25 +247,26 @@ where
         let times = self.time_embeddings.forward(timesteps);
 
         let rewards = rewards + times.clone();
+        
         let actions = actions + times.clone();
         let states = states + times;
 
         let stacked = [rewards, states, actions]
             .stack()
             .permute::<_, Axes4<0, 2, 1, 3>>()
-            .reshape::<(Const<B>, Const<{ 3 * EPISODES_IN_SEQ }>, Const<HIDDEN>)>();
+            .reshape::<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>)>();
 
-        let input: Tensor<(Const<B>, Const<{ 3 * EPISODES_IN_SEQ }>, Const<HIDDEN>), E, D, T> =
-            dev.build_module::<LN, E>().forward(stacked);
+        let input: Tensor<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>), E, D> =
+            dev.build_module::<LN<Config>, E>().forward(stacked);
 
-        let out = self.transformer.forward(input);
+        // let out = self.transformer.forward(input);
 
-        let out = out
+        let out = input
             .reshape::<(
                 Const<B>,
-                Const<EPISODES_IN_SEQ>,
+                Const<{Config::SEQ_LEN}>,
                 Const<3>,
-                Const<HIDDEN>,
+                Const<{Config::HIDDEN_SIZE}>,
             )>()
             .permute::<_, Axes4<0, 2, 1, 3>>();
 
@@ -258,33 +279,41 @@ where
 
 // Batched Module Mut
 impl<
-        const EPISODES_IN_SEQ: usize,
-        const MAX_EPISODES_IN_GAME: usize,
         const S: usize,
         const A: usize,
         const B: usize,
         T: Tape<E, D>,
         E: Dtype + Float,
         D: Device<E> + DeviceBuildExt,
-    > ModuleMut<BatchedInput<EPISODES_IN_SEQ, B, S, A, E, D, T>>
-    for DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E, D>
+        Config: DTModelConfig
+    > ModuleMut<BatchedInput<B, S, A, E, D, Config, T>>
+    for DTModel<Config, S, A, E, D>
 where
-    [(); 3 * EPISODES_IN_SEQ]: Sized,
+    [(); 3 * Config::SEQ_LEN]: Sized,
+    [(); Config::SEQ_LEN]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::NUM_LAYERS]: Sized,
 {
-    type Output = Tensor<(Const<B>, Const<EPISODES_IN_SEQ>, Const<A>), E, D, T>;
+    type Output = Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<A>), E, D, T>;
 
     type Error = ();
 
     fn try_forward_mut(
         &mut self,
-        input: BatchedInput<EPISODES_IN_SEQ, B, S, A, E, D, T>,
+        input: BatchedInput<B, S, A, E, D, Config, T>,
     ) -> Result<Self::Output, Self::Error> {
         let (states, actions, rewards, timesteps) = input;
         let dev: D = Default::default();
 
         let states = self.state_head.forward_mut(states);
-        let actions = self.action_head.forward_mut(actions);
-        let rewards = self.return_head.forward_mut(rewards);
+        let (states, tape) = states.split_tape();
+        let actions = self.action_head.forward_mut(actions.put_tape(tape));
+        let (actions, tape) = actions.split_tape();
+        let rewards = self.return_head.forward_mut(rewards.put_tape(tape));
+        let (rewards, tape) = rewards.split_tape();
 
         let times = self.time_embeddings.forward(timesteps);
 
@@ -295,19 +324,20 @@ where
         let stacked = [rewards, states, actions]
             .stack()
             .permute::<_, Axes4<0, 2, 1, 3>>()
-            .reshape::<(Const<B>, Const<{ 3 * EPISODES_IN_SEQ }>, Const<HIDDEN>)>();
+            .reshape::<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>)>();
+        let stacked = stacked.put_tape(tape);
 
-        let input: Tensor<(Const<B>, Const<{ 3 * EPISODES_IN_SEQ }>, Const<HIDDEN>), E, D, T> =
-            dev.build_module::<LN, E>().forward(stacked);
+        let input: Tensor<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>), E, D, T> =
+            dev.build_module::<LN<Config>, E>().forward(stacked);
 
-        let out = self.transformer.forward_mut(input);
+        // let out = self.transformer.forward(input);
 
-        let out = out
+        let out = input
             .reshape::<(
                 Const<B>,
-                Const<EPISODES_IN_SEQ>,
+                Const<{Config::SEQ_LEN}>,
                 Const<3>,
-                Const<HIDDEN>,
+                Const<{Config::HIDDEN_SIZE}>,
             )>()
             .permute::<_, Axes4<0, 2, 1, 3>>();
 

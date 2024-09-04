@@ -1,6 +1,6 @@
 use dfdx::{optim::Adam, prelude::*};
 
-use crate::{dt_model::BatchedInput, DTModel, DTModelWrapper, DTState};
+use crate::{dt_model::BatchedInput, DTModel, DTModelConfig, DTModelWrapper, DTState};
 
 pub fn loss<const B: usize, const A: usize, E: Dtype, D: Device<E>, T: Tape<E, D>>(
     action_pred: Tensor<(Const<B>, Const<A>), E, D, T>,
@@ -12,48 +12,55 @@ pub fn loss<const B: usize, const A: usize, E: Dtype, D: Device<E>, T: Tape<E, D
 impl<
         E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
         D: Device<E> + DeviceBuildExt,
-        Game: DTState<E, D>,
-    > DTModelWrapper<E, D, Game>
-    where [(); Game::MAX_EPISODES_IN_GAME]: Sized,
+        Config: DTModelConfig,
+        Game: DTState<E, D, Config>,
+    > DTModelWrapper<E, D,Config, Game>
+    where
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::SEQ_LEN]: Sized,
+    [(); 3 * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Game::ACTION_SIZE]: Sized,
     [(); Game::STATE_SIZE]: Sized,
-    [(); 3 * Game::EPISODES_IN_SEQ]: Sized
+    [(); Config::NUM_LAYERS]: Sized,
 {
     pub fn train_on_batch<const B: usize>(
     &mut self, 
     batch: BatchedInput<
-        { Game::EPISODES_IN_SEQ },
         B,
         { Game::STATE_SIZE },
         { Game::ACTION_SIZE },
         E,
         D,
+        Config
     >,
     actions: [Game::Action; B],
     optimizer: &mut Adam<
-        DTModel<{ Game::MAX_EPISODES_IN_GAME }, {Game::EPISODES_IN_SEQ},{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>,
+        DTModel<Config,{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>,
         E,
         D,
     >,
     dev: &D,
 ) -> E where
-    [(); 3 * { Game::EPISODES_IN_SEQ }]: Sized,
+    [(); 3 * { Config::SEQ_LEN }]: Sized,
 {
     // Using the [dfdx dox](https://docs.rs/dfdx/latest/dfdx/index.html)
-
+    let grads = self.0.alloc_grads();
     // Trace gradients through forward pass
     let batch: BatchedInput<
-        { Game::EPISODES_IN_SEQ },
         B,
         { Game::STATE_SIZE },
         { Game::ACTION_SIZE },
         E,
         D,
+        Config,
         OwnedTape<E, D>,
     > = (
-        batch.0.retaped(),
-        batch.1.retaped(),
-        batch.2.retaped(),
+        batch.0.traced(grads),
+        batch.1,
+        batch.2,
         batch.3,
     );
     let y = self.0.forward_mut(batch);
@@ -62,15 +69,14 @@ impl<
     let actual = actions
         .map(|action| Game::action_to_tensor(&action))
         .stack();
-    let pred_index = dev.tensor([Game::EPISODES_IN_SEQ - 1; B]);
+    let pred_index = dev.tensor([Config::SEQ_LEN - 1; B]);
     let pred: Tensor<(Const<B>, Const<{ Game::ACTION_SIZE }>), E, D, OwnedTape<E, D>> =
     y.select(pred_index);
     let loss = loss(pred, actual);
     let loss_value = loss.as_vec()[0];
-    let grads = loss.backward();
 
     // apply gradients
-    optimizer.update(&mut self.0, &grads);
+    optimizer.update(&mut self.0, &loss.backward()).unwrap();
 
 
     loss_value

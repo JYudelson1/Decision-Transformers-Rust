@@ -1,6 +1,6 @@
 use std::array;
 
-use crate::{state_trait::HumanEvaluatable, trait_helpers::stack::StackKernel, DTModel};
+use crate::{state_trait::HumanEvaluatable, trait_helpers::stack::StackKernel, DTModel, DTModelConfig};
 use dfdx::{optim::Adam, prelude::*};
 use num_traits::Float;
 use rand_distr::uniform::SampleUniform;
@@ -12,16 +12,24 @@ use crate::{
 };
 
 pub fn batch_inputs<
-    const EPISODES_IN_SEQ: usize,
     const B: usize,
     const S: usize,
     const A: usize,
     E: Dtype,
     D: Device<E> + StackKernel<usize> + dfdx::tensor::ZerosTensor<usize>,
+    Config: DTModelConfig,
 >(
-    inputs: [Input<EPISODES_IN_SEQ, S, A, E, D, NoneTape>; B],
+    inputs: [Input<S, A, E, D, Config, NoneTape>; B],
     device: &D,
-) -> BatchedInput<EPISODES_IN_SEQ, B, S, A, E, D, NoneTape> {
+) -> BatchedInput<B, S, A, E, D, Config, NoneTape>
+where
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::SEQ_LEN]: Sized,
+    [(); 3 * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
+{
     let mut states = array::from_fn(|_| device.zeros());
     let mut actions = array::from_fn(|_| device.zeros());
     let mut rewards = array::from_fn(|_| device.zeros());
@@ -42,31 +50,35 @@ pub fn batch_inputs<
     )
 }
 
-pub fn game_to_inputs<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform, D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>, Game: DTState<E, D>>(
+pub fn game_to_inputs<
+    E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
+    D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>,
+    Config: DTModelConfig,
+    Game: DTState<E, D, Config>,
+>(
     states: Vec<Game>,
     actions: Vec<Game::Action>,
-    dev: &D
-) -> Vec<
-    Input<
-        { Game::EPISODES_IN_SEQ },
-        { Game::STATE_SIZE },
-        { Game::ACTION_SIZE },
-        E,
-        D,
-        NoneTape,
-    >,
->{
+    dev: &D,
+) -> Vec<Input<{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config, NoneTape>>
+where
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::SEQ_LEN]: Sized,
+    [(); 3 * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
+{
     let mut inputs = vec![];
 
     let rewards_to_go = get_rewards_to_go(&states, &actions);
 
-    let mut actions_in_seq: [Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Game::EPISODES_IN_SEQ] =
+    let mut actions_in_seq: [Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D>; Config::SEQ_LEN] =
         std::array::from_fn(|_| dev.zeros());
-    let mut states_in_seq: [Tensor<(Const<{ Game::STATE_SIZE }>,), E, D>; Game::EPISODES_IN_SEQ] =
+    let mut states_in_seq: [Tensor<(Const<{ Game::STATE_SIZE }>,), E, D>; Config::SEQ_LEN] =
         std::array::from_fn(|_| dev.zeros());
-    let mut rtg_in_seq: [Tensor<(Const<1>,), E, D>; Game::EPISODES_IN_SEQ] =
+    let mut rtg_in_seq: [Tensor<(Const<1>,), E, D>; Config::SEQ_LEN] =
         std::array::from_fn(|_| dev.zeros());
-    let mut timesteps_in_seq: [Tensor<(), usize, D>; Game::EPISODES_IN_SEQ] =
+    let mut timesteps_in_seq: [Tensor<(), usize, D>; Config::SEQ_LEN] =
         std::array::from_fn(|_| dev.zeros());
 
     for (i, (state, action)) in states.into_iter().zip(actions.into_iter()).enumerate() {
@@ -97,20 +109,12 @@ pub fn game_to_inputs<E: Dtype + From<f32>+ num_traits::Float + rand_distr::unif
     inputs
 }
 
-fn next_sequence<
-    E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
-    D: Device<E>,
-    Game: DTState<E, D>,
-    T,
->(
-    seq: &mut [T; Game::EPISODES_IN_SEQ],
-    new_last_element: T,
-) {
+fn next_sequence<Config: DTModelConfig, T>(seq: &mut [T; Config::SEQ_LEN], new_last_element: T) {
     seq.rotate_left(1);
     seq[seq.len() - 1] = new_last_element;
 }
 
-pub fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform , D: Device<E>, Game: DTState<E, D>>(
+pub fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform , D: Device<E>, Config: DTModelConfig, Game: DTState<E, D, Config>>(
     states: &Vec<Game>,
     actions: &Vec<Game::Action>,
 ) -> Vec<f32> {
@@ -126,10 +130,10 @@ pub fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::u
     backwards_rewards
 }
 
-fn masked_next<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform, D: Device<E>, Game: DTState<E, D>, S: ConstShape>(
-    seq: &[Tensor<S, E, D>; Game::EPISODES_IN_SEQ],
+fn masked_next<E: Dtype + rand_distr::uniform::SampleUniform, D: Device<E>, Config: DTModelConfig, S: ConstShape>(
+    seq: &[Tensor<S, E, D>; Config::SEQ_LEN],
     dev: &D,
-) -> [Tensor<S, E, D>; Game::EPISODES_IN_SEQ]{
+) -> [Tensor<S, E, D>; Config::SEQ_LEN]{
     let mut new_seq = seq.clone();
     new_seq[new_seq.len() - 1] = dev.zeros();
     new_seq
@@ -138,13 +142,19 @@ fn masked_next<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::Sa
 pub struct DTModelWrapper<
     E: Dtype + From<f32> + Float + SampleUniform,
     D: Device<E>,
-    Game: DTState<E, D>,
->(pub DTModel<{ Game::MAX_EPISODES_IN_GAME }, {Game::EPISODES_IN_SEQ},{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>)
+    Config: DTModelConfig,
+    Game: DTState<E, D, Config>,
+>(pub DTModel<Config,{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>)
 where
-    [(); Game::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
     [(); Game::ACTION_SIZE]: Sized,
     [(); Game::STATE_SIZE]: Sized,
-    [(); 3 * Game::EPISODES_IN_SEQ]: Sized;
+    [(); 3 * Config::SEQ_LEN]: Sized,
+    [(); Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::NUM_LAYERS]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized;
 
 impl<
         E: Dtype
@@ -153,14 +163,19 @@ impl<
             + rand_distr::uniform::SampleUniform
             + for<'a> std::ops::AddAssign<&'a E>,
         D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>,
-        Game: DTState<E, D> + HumanEvaluatable<E, D>,
-    > DTModelWrapper<E, D, Game>
+        Config: DTModelConfig,
+        Game: DTState<E, D, Config> + HumanEvaluatable<E, D, Config>,
+    > DTModelWrapper<E, D, Config, Game>
 where
-    [(); Game::MAX_EPISODES_IN_GAME]: Sized,
-    [(); Game::EPISODES_IN_SEQ]: Sized,
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::SEQ_LEN]: Sized,
     [(); Game::ACTION_SIZE]: Sized,
     [(); Game::STATE_SIZE]: Sized,
-    [(); 3 * { Game::EPISODES_IN_SEQ }]: Sized,
+    [(); 3 * { Config::SEQ_LEN }]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); Config::NUM_LAYERS]: Sized,
 {
     pub fn evaluate(&self, mut starting_state: Game) {
         let mut state_history = vec![starting_state.clone()];
@@ -196,12 +211,20 @@ where
     }
 
     pub fn online_learn<const B: usize, R: rand::Rng + ?Sized>(&mut self, temp: E, desired_reward: f32, optimizer: &mut Adam<
-        DTModel<{ Game::MAX_EPISODES_IN_GAME }, {Game::EPISODES_IN_SEQ},{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>,
+        DTModel<Config,{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>,
         E,
         D,
     >,
     dev: &D,
-    rng: &mut R) -> E{
+    rng: &mut R) -> E
+    where 
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::SEQ_LEN]: Sized,
+    [(); 3 * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::NUM_LAYERS]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized{
         let (batch, actual) = get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng));
 
         self.train_on_batch::<B>(batch, actual, optimizer, dev)
@@ -214,32 +237,39 @@ pub fn get_batch_from_fn<
     F,
     E: Dtype + From<f32> + Float + SampleUniform,
     D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>,
-    Game: DTState<E, D>,
+    Config: DTModelConfig,
+    Game: DTState<E, D, Config>,
 >(
     rng: &mut R,
     player_fn: F,
 ) -> (
     BatchedInput<
-        { Game::EPISODES_IN_SEQ },
         B,
         { Game::STATE_SIZE },
         { Game::ACTION_SIZE },
         E,
         D,
+        Config,
         NoneTape,
     >,
     [Game::Action; B],
 )
 where
     F: Fn(&mut R) -> (Vec<Game>, Vec<Game::Action>),
+    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+    [(); Config::SEQ_LEN]: Sized,
+    [(); 3 * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE]: Sized,
+    [(); Config::MLP_INNER]: Sized,
+    [(); Config::NUM_ATTENTION_HEADS]: Sized
 {
     let dev: D = Default::default();
     let mut batch: [Input<
-        { Game::EPISODES_IN_SEQ },
         { Game::STATE_SIZE },
         { Game::ACTION_SIZE },
         E,
         D,
+        Config,
         NoneTape,
     >; B] = std::array::from_fn(|_| (dev.zeros(), dev.zeros(), dev.zeros(), dev.zeros()));
 
