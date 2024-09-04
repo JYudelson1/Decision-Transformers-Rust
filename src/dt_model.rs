@@ -1,3 +1,5 @@
+#![allow(type_alias_bounds)]
+
 use dfdx::prelude::*;
 use num_traits::Float;
 
