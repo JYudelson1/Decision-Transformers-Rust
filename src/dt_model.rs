@@ -1,4 +1,5 @@
 use dfdx::prelude::*;
+use num_traits::Float;
 
 use crate::transformer::CustomTransformerDecoder;
 
@@ -146,7 +147,7 @@ impl<
         const S: usize,
         const A: usize,
         T: Tape<E, D>,
-        E: Dtype,
+        E: Dtype + Float,
         D: Device<E> + DeviceBuildExt,
     > Module<Input<EPISODES_IN_SEQ, S, A, E, D, T>> for DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E, D>
 where
@@ -201,7 +202,7 @@ impl<
         const A: usize,
         const B: usize,
         T: Tape<E, D>,
-        E: Dtype,
+        E: Dtype + Float,
         D: Device<E> + DeviceBuildExt,
     > Module<BatchedInput<EPISODES_IN_SEQ, B, S, A, E, D, T>>
     for DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E, D>
@@ -263,7 +264,7 @@ impl<
         const A: usize,
         const B: usize,
         T: Tape<E, D>,
-        E: Dtype,
+        E: Dtype + Float,
         D: Device<E> + DeviceBuildExt,
     > ModuleMut<BatchedInput<EPISODES_IN_SEQ, B, S, A, E, D, T>>
     for DTModel<MAX_EPISODES_IN_GAME, EPISODES_IN_SEQ, S, A, E, D>
