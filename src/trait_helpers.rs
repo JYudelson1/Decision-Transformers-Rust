@@ -3,7 +3,7 @@ use std::{array, path::Path};
 use crate::{
     state_trait::HumanEvaluatable, trait_helpers::stack::StackKernel, DTModel, DTModelConfig,
 };
-use dfdx::{optim::Adam, prelude::*, tensor::safetensors::SafeDtype};
+use dfdx::{prelude::*, tensor::safetensors::SafeDtype};
 use num_traits::Float;
 use rand_distr::uniform::SampleUniform;
 
