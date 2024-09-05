@@ -177,14 +177,14 @@ where
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
 {
-    pub fn evaluate(&self, mut starting_state: Game) {
+    pub fn evaluate(&self, mut starting_state: Game, temp: E, desired_reward: f32,) {
         let mut state_history = vec![starting_state.clone()];
         let mut action_history = vec![];
 
         starting_state.print();
 
         while starting_state.is_still_playing() {
-            let action = self.make_move(&state_history, &action_history, 1.0.into(), 5.0);
+            let action = self.make_move(&state_history, &action_history, temp, desired_reward);
             action_history.push(action.clone());
 
             Game::print_action(&action);
