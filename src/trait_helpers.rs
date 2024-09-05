@@ -314,7 +314,6 @@ where
     while num_examples < B {
         // Play one game
         let (states, actions) = player_fn(rng);
-        println!("Starting with {} states", states.len());
         let (mut states, mut actions) = if let Some(cap) = cap_from_game {
             let mut indices = (0..states.len()).choose_multiple(rng, cap);
             indices.sort();
@@ -341,7 +340,6 @@ where
         } else {
             (states, actions)
         };
-        println!("Using {} states", states.len());
 
         // Update true actions (for training)
         for action in actions.iter() {
