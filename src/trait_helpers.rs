@@ -1,7 +1,9 @@
-use std::array;
+use std::{array, path::Path};
 
-use crate::{state_trait::HumanEvaluatable, trait_helpers::stack::StackKernel, DTModel, DTModelConfig};
-use dfdx::{optim::Adam, prelude::*};
+use crate::{
+    state_trait::HumanEvaluatable, trait_helpers::stack::StackKernel, DTModel, DTModelConfig,
+};
+use dfdx::{optim::Adam, prelude::*, tensor::safetensors::SafeDtype};
 use num_traits::Float;
 use rand_distr::uniform::SampleUniform;
 
@@ -228,6 +230,16 @@ where
         let (batch, actual) = get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng));
 
         self.train_on_batch::<B>(batch, actual, optimizer, dev)
+    }
+
+    pub fn save<P: AsRef<Path>>(&self, path: P) 
+    where E: SafeDtype{
+        self.0.save_safetensors(path).unwrap()
+    }
+
+    pub fn load<P: AsRef<Path>>(&mut self, path: P)
+    where E: SafeDtype{
+        self.0.load_safetensors(path).unwrap();
     }
 }
 
