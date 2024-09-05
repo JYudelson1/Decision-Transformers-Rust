@@ -1,4 +1,4 @@
-use dfdx::prelude::*;
+use dfdx::{optim::Adam, prelude::*};
 
 use crate::{dt_model::BatchedInput, DTModel, DTModelConfig, DTModelWrapper, DTState};
 
@@ -12,7 +12,7 @@ pub fn loss<const B: usize, const A: usize, E: Dtype, D: Device<E>, T: Tape<E, D
 impl<
         E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
         D: Device<E> + DeviceBuildExt,
-        Config: DTModelConfig,
+        Config: DTModelConfig + 'static,
         Game: DTState<E, D, Config>,
     > DTModelWrapper<E, D, Config, Game>
 where
@@ -25,6 +25,7 @@ where
     [(); Game::ACTION_SIZE]: Sized,
     [(); Game::STATE_SIZE]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
+    [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
 {
     pub fn train_on_batch<
         const B: usize,

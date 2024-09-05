@@ -1,9 +1,8 @@
-use crate::{dt_model::Input, trait_helpers::get_rewards_to_go, DTModelConfig, DTModelWrapper, DTState};
+use crate::{dt_model::Input, trait_helpers::get_rewards_to_go, utils::stack_usize, DTModelConfig, DTModelWrapper, DTState};
 
 use dfdx::prelude::*;
 use rand::{distributions::WeightedIndex, thread_rng};
 use rand_distr::Distribution;
-use stack::StackKernel;
 
 impl<
         E: Dtype
@@ -11,8 +10,8 @@ impl<
             + num_traits::Float
             + rand_distr::uniform::SampleUniform
             + for<'a> std::ops::AddAssign<&'a E>,
-        D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>,
-        Config: DTModelConfig,
+        D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize>,
+        Config: DTModelConfig + 'static,
         Game: DTState<E, D, Config>,
     > DTModelWrapper<E, D, Config, Game>
 where
@@ -25,6 +24,7 @@ where
     [(); Config::MLP_INNER]: Sized,
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
+    [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
 {
     pub fn make_move(
         &self,
@@ -129,7 +129,7 @@ where
             states_in_seq.stack(),
             actions_in_seq.stack(),
             rtg_in_seq.stack(),
-            timesteps_in_seq.stack(),
+            stack_usize(timesteps_in_seq, &dev)
         );
 
         // Forward the input

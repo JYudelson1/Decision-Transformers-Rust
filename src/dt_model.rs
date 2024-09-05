@@ -62,7 +62,7 @@ pub type BatchedInput<
     const A: usize,
     E,
     D,
-    Config: DTModelConfig,
+    Config: DTModelConfig + 'static,
     T = NoneTape,
 > = (
     BatchedStates<{Config::SEQ_LEN}, B, S, E, D, T>,
@@ -72,7 +72,7 @@ pub type BatchedInput<
 );
 
 pub struct DTModel<
-    Config: DTModelConfig,
+    Config: DTModelConfig + 'static,
     const STATE: usize,
     const ACTION: usize,
     E: Dtype,
@@ -98,7 +98,7 @@ impl<
         const A: usize,
         E: Dtype + num_traits::Float + rand_distr::uniform::SampleUniform,
         D: Device<E>,
-        Config: DTModelConfig
+        Config: DTModelConfig + 'static
     > TensorCollection<E, D> for DTModel<Config, S, A, E, D>
     where
     [(); 3 * Config::SEQ_LEN]: Sized,
@@ -160,7 +160,7 @@ impl<
         const A: usize,
         E: Dtype + Float,
         D: Device<E> + DeviceBuildExt,
-        Config: DTModelConfig
+        Config: DTModelConfig + 'static
     > Module<Input<S, A, E, D, Config>> for DTModel<Config, S, A, E, D>
 where
     [(); 3 * Config::SEQ_LEN]: Sized,
@@ -170,6 +170,7 @@ where
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
+    [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
 {
     type Output = Tensor<(Const<{Config::SEQ_LEN}>, Const<A>), E, D>;
 
@@ -200,9 +201,9 @@ where
         let input: Tensor<(Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>), E, D> =
             dev.build_module::<LN<Config>, E>().forward(stacked);
 
-        // let out = self.transformer.forward(input);
+        let out = self.transformer.forward(input);
 
-        let out = input
+        let out = out
             .reshape::<(Const<{Config::SEQ_LEN}>, Const<3>, Const<{Config::HIDDEN_SIZE}>)>()
             .permute::<_, Axes3<1, 0, 2>>();
 
@@ -219,7 +220,7 @@ impl<
         const B: usize,
         E: Dtype + Float,
         D: Device<E> + DeviceBuildExt,
-        Config: DTModelConfig
+        Config: DTModelConfig + 'static
     > Module<BatchedInput<B, S, A, E, D, Config, NoneTape>>
     for DTModel<Config, S, A, E, D>
 where
@@ -230,6 +231,7 @@ where
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
+    [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
 {
     type Output = Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<A>), E, D, NoneTape>;
 
@@ -261,9 +263,9 @@ where
         let input: Tensor<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>), E, D> =
             dev.build_module::<LN<Config>, E>().forward(stacked);
 
-        // let out = self.transformer.forward(input);
+        let out = self.transformer.forward(input);
 
-        let out = input
+        let out = out
             .reshape::<(
                 Const<B>,
                 Const<{Config::SEQ_LEN}>,
@@ -287,7 +289,7 @@ impl<
         T: Tape<E, D>,
         E: Dtype + Float,
         D: Device<E> + DeviceBuildExt,
-        Config: DTModelConfig
+        Config: DTModelConfig + 'static
     > ModuleMut<BatchedInput<B, S, A, E, D, Config, T>>
     for DTModel<Config, S, A, E, D>
 where
@@ -298,6 +300,7 @@ where
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
+    [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
 {
     type Output = Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<A>), E, D, T>;
 
@@ -332,9 +335,9 @@ where
         let input: Tensor<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>), E, D, T> =
             dev.build_module::<LN<Config>, E>().forward_mut(stacked);
 
-        // let out = self.transformer.forward(input);
+        let out = self.transformer.forward_mut(input);
 
-        let out = input
+        let out = out
             .reshape::<(
                 Const<B>,
                 Const<{Config::SEQ_LEN}>,

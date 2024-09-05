@@ -1,5 +1,4 @@
 use dfdx::prelude::*;
-use stack::StackKernel;
 
 use crate::{
     dt_model::BatchedInput, trait_helpers::get_batch_from_fn, DTModel, DTModelConfig,
@@ -9,7 +8,7 @@ use crate::{
 pub trait DTState<
     E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
     D: Device<E>,
-    Config: DTModelConfig,
+    Config: DTModelConfig + 'static,
 >: Clone
 {
     type Action: Clone;
@@ -65,8 +64,8 @@ pub trait DTState<
 
 pub trait GetOfflineData<
     E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
-    D: Device<E> + ZerosTensor<usize> + StackKernel<usize>,
-    Config: DTModelConfig,
+    D: Device<E> + ZerosTensor<usize> + CopySlice<usize>,
+    Config: DTModelConfig + 'static,
 >: DTState<E, D, Config>
 {
     /// Required method
@@ -94,7 +93,7 @@ pub trait GetOfflineData<
 pub trait HumanEvaluatable<
     E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
     D: Device<E>,
-    Config: DTModelConfig,
+    Config: DTModelConfig + 'static,
 >: DTState<E, D, Config>
 {
     fn print(&self);

@@ -1,9 +1,11 @@
 use std::{array, path::Path};
 
 use crate::{
-    state_trait::HumanEvaluatable, trait_helpers::stack::StackKernel, DTModel, DTModelConfig,
+    state_trait::HumanEvaluatable,
+    utils::{stack_usize, stack_usize_batched},
+    DTModel, DTModelConfig,
 };
-use dfdx::{prelude::*, tensor::safetensors::SafeDtype};
+use dfdx::{optim::Adam, prelude::*, tensor::safetensors::SafeDtype};
 use num_traits::Float;
 use rand_distr::uniform::SampleUniform;
 
@@ -18,8 +20,8 @@ pub fn batch_inputs<
     const S: usize,
     const A: usize,
     E: Dtype,
-    D: Device<E> + StackKernel<usize> + dfdx::tensor::ZerosTensor<usize>,
-    Config: DTModelConfig,
+    D: Device<E> + dfdx::tensor::ZerosTensor<usize> + CopySlice<usize>,
+    Config: DTModelConfig + 'static,
 >(
     inputs: [Input<S, A, E, D, Config, NoneTape>; B],
     device: &D,
@@ -48,14 +50,14 @@ where
         states.stack(),
         actions.stack(),
         rewards.stack(),
-        times.stack(),
+        stack_usize_batched(times, device),
     )
 }
 
 pub fn game_to_inputs<
     E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
-    D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>,
-    Config: DTModelConfig,
+    D: Device<E> + dfdx::tensor::ZerosTensor<usize> ,
+    Config: DTModelConfig + 'static,
     Game: DTState<E, D, Config>,
 >(
     states: Vec<Game>,
@@ -103,7 +105,7 @@ where
             states_in_seq.clone().stack(),
             masked_next(&actions_in_seq, dev).stack(),
             masked_next(&rtg_in_seq, dev).stack(),
-            timesteps_in_seq.clone().stack(),
+            stack_usize(timesteps_in_seq.clone(), &dev),
         );
         inputs.push(input)
     }
@@ -111,12 +113,12 @@ where
     inputs
 }
 
-fn next_sequence<Config: DTModelConfig, T>(seq: &mut [T; Config::SEQ_LEN], new_last_element: T) {
+fn next_sequence<Config: DTModelConfig + 'static, T>(seq: &mut [T; Config::SEQ_LEN], new_last_element: T) {
     seq.rotate_left(1);
     seq[seq.len() - 1] = new_last_element;
 }
 
-pub fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform , D: Device<E>, Config: DTModelConfig, Game: DTState<E, D, Config>>(
+pub fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform , D: Device<E>, Config: DTModelConfig + 'static, Game: DTState<E, D, Config>>(
     states: &Vec<Game>,
     actions: &Vec<Game::Action>,
 ) -> Vec<f32> {
@@ -132,7 +134,7 @@ pub fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::u
     backwards_rewards
 }
 
-fn masked_next<E: Dtype + rand_distr::uniform::SampleUniform, D: Device<E>, Config: DTModelConfig, S: ConstShape>(
+fn masked_next<E: Dtype + rand_distr::uniform::SampleUniform, D: Device<E>, Config: DTModelConfig + 'static, S: ConstShape>(
     seq: &[Tensor<S, E, D>; Config::SEQ_LEN],
     dev: &D,
 ) -> [Tensor<S, E, D>; Config::SEQ_LEN]{
@@ -144,7 +146,7 @@ fn masked_next<E: Dtype + rand_distr::uniform::SampleUniform, D: Device<E>, Conf
 pub struct DTModelWrapper<
     E: Dtype + From<f32> + Float + SampleUniform,
     D: Device<E>,
-    Config: DTModelConfig,
+    Config: DTModelConfig + 'static,
     Game: DTState<E, D, Config>,
 >(pub DTModel<Config,{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>)
 where
@@ -164,8 +166,8 @@ impl<
             + num_traits::Float
             + rand_distr::uniform::SampleUniform
             + for<'a> std::ops::AddAssign<&'a E>,
-        D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>,
-        Config: DTModelConfig,
+        D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize> + CopySlice<usize>,
+        Config: DTModelConfig + 'static,
         Game: DTState<E, D, Config> + HumanEvaluatable<E, D, Config>,
     > DTModelWrapper<E, D, Config, Game>
 where
@@ -178,6 +180,7 @@ where
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
+    [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
 {
     pub fn evaluate(&self, mut starting_state: Game, temp: E, desired_reward: f32,) {
         let mut state_history = vec![starting_state.clone()];
@@ -212,7 +215,11 @@ where
         (states, actions)
     }
 
-    pub fn online_learn<const B: usize, R: rand::Rng + ?Sized, O: Optimizer<DTModel<Config,{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>, D, E>>(&mut self, temp: E, desired_reward: f32, optimizer: &mut O,
+    pub fn online_learn<
+    const B: usize, 
+    R: rand::Rng + ?Sized, 
+    O: Optimizer<DTModel<Config,{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>, D, E>
+    >(&mut self, temp: E, desired_reward: f32, optimizer: &mut O,
     dev: &D,
     rng: &mut R) -> E
     where 
@@ -222,10 +229,12 @@ where
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::MLP_INNER]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
-    [(); Config::NUM_ATTENTION_HEADS]: Sized{
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
+    {
         let (batch, actual) = get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng));
 
-        self.train_on_batch::<B, _>(batch, actual, optimizer, dev)
+        self.train_on_batch::<B, O>(batch, actual, optimizer, dev)
     }
 
     pub fn save<P: AsRef<Path>>(&self, path: P) 
@@ -244,8 +253,8 @@ pub fn get_batch_from_fn<
     R: rand::Rng + ?Sized,
     F,
     E: Dtype + From<f32> + Float + SampleUniform,
-    D: Device<E> + dfdx::tensor::ZerosTensor<usize> + StackKernel<usize>,
-    Config: DTModelConfig,
+    D: Device<E> + dfdx::tensor::ZerosTensor<usize> + CopySlice<usize>,
+    Config: DTModelConfig + 'static,
     Game: DTState<E, D, Config>,
 >(
     rng: &mut R,

@@ -1,3 +1,4 @@
+use crate::self_attn::SelfAttention;
 use dfdx::{
     nn::{
         modules::{FastGeLU, LayerNorm1D, Linear, MultiHeadAttention},
@@ -10,119 +11,119 @@ use dfdx::{
 use num_traits::Float;
 use rand_distr::uniform::SampleUniform;
 
-#[derive(Debug, Clone)]
-pub struct SelfAttention<const HIDDEN: usize, const NUM_HEADS: usize, E: Dtype, D: Device<E>>(
-    pub MultiHeadAttention<HIDDEN, NUM_HEADS, HIDDEN, HIDDEN, E, D>,
-);
+// #[derive(Debug, Clone)]
+// pub struct SelfAttention<const HIDDEN: usize, const NUM_HEADS: usize, E: Dtype, D: Device<E>>(
+//     pub MultiHeadAttention<HIDDEN, NUM_HEADS, HIDDEN, HIDDEN, E, D>,
+// );
 
-impl<
-        const HIDDEN: usize,
-        const NUM_HEADS: usize,
-        E: Dtype + num_traits::Float + rand_distr::uniform::SampleUniform,
-        D: Device<E>,
-    > TensorCollection<E, D> for SelfAttention<HIDDEN, NUM_HEADS, E, D>
-{
-    type To<E2: Dtype, D2: Device<E2>> = SelfAttention<HIDDEN, NUM_HEADS, E2, D2>;
+// impl<
+//         const HIDDEN: usize,
+//         const NUM_HEADS: usize,
+//         E: Dtype + num_traits::Float + rand_distr::uniform::SampleUniform,
+//         D: Device<E>,
+//     > TensorCollection<E, D> for SelfAttention<HIDDEN, NUM_HEADS, E, D>
+// {
+//     type To<E2: Dtype, D2: Device<E2>> = SelfAttention<HIDDEN, NUM_HEADS, E2, D2>;
 
-    fn iter_tensors<V: ModuleVisitor<Self, E, D>>(
-        visitor: &mut V,
-    ) -> Result<Option<Self::To<V::E2, V::D2>>, V::Err> {
-        visitor.visit_fields(
-            (
-                // Define name of each field and how to access it, using ModuleField for Modules,
-                // and TensorField for Tensors.
-                Self::module("mhs", |s| &s.0, |s| &mut s.0),
-            ),
-            // Define how to construct the collection given its fields in the order they are given
-            // above. This conversion is done using the ModuleFields trait.
-            |mha| SelfAttention(mha.0),
-        )
-    }
-}
+//     fn iter_tensors<V: ModuleVisitor<Self, E, D>>(
+//         visitor: &mut V,
+//     ) -> Result<Option<Self::To<V::E2, V::D2>>, V::Err> {
+//         visitor.visit_fields(
+//             (
+//                 // Define name of each field and how to access it, using ModuleField for Modules,
+//                 // and TensorField for Tensors.
+//                 Self::module("mhs", |s| &s.0, |s| &mut s.0),
+//             ),
+//             // Define how to construct the collection given its fields in the order they are given
+//             // above. This conversion is done using the ModuleFields trait.
+//             |mha| SelfAttention(mha.0),
+//         )
+//     }
+// }
 
-// Single Module
-impl<
-        const SEQ_LEN: usize,
-        const HIDDEN: usize,
-        const NUM_HEADS: usize,
-        E: Dtype + Float,
-        D: Device<E>,
-        T: Tape<E, D>,
-    > Module<Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
-    for SelfAttention<HIDDEN, NUM_HEADS, E, D>
-{
-    type Output = Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
+// // Single Module
+// impl<
+//         const SEQ_LEN: usize,
+//         const HIDDEN: usize,
+//         const NUM_HEADS: usize,
+//         E: Dtype + Float,
+//         D: Device<E>,
+//         T: Tape<E, D>,
+//     > Module<Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
+//     for SelfAttention<HIDDEN, NUM_HEADS, E, D>
+// {
+//     type Output = Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
 
-    type Error = D::Err;
+//     type Error = D::Err;
 
-    fn try_forward(
-        &self,
-        input: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
-    ) -> Result<Self::Output, Self::Error> {
-        let (input, tape) = input.split_tape();
-        let input = (input.clone().put_tape(tape), input.clone(), input);
-        let out = self.0.forward(input);
+//     fn try_forward(
+//         &self,
+//         input: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
+//     ) -> Result<Self::Output, Self::Error> {
+//         let (input, tape) = input.split_tape();
+//         let input = (input.clone().put_tape(tape), input.clone(), input);
+//         let out = self.0.forward(input);
 
-        Ok(out)
-    }
-}
+//         Ok(out)
+//     }
+// }
 
-// Batched Mut
-impl<
-        const SEQ_LEN: usize,
-        const HIDDEN: usize,
-        const NUM_HEADS: usize,
-        const B: usize,
-        E: Dtype + Float,
-        D: Device<E>,
-        T: Tape<E, D>,
-    > Module<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
-    for SelfAttention<HIDDEN, NUM_HEADS, E, D>
-{
-    type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
+// // Batched Mut
+// impl<
+//         const SEQ_LEN: usize,
+//         const HIDDEN: usize,
+//         const NUM_HEADS: usize,
+//         const B: usize,
+//         E: Dtype + Float,
+//         D: Device<E>,
+//         T: Tape<E, D>,
+//     > Module<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
+//     for SelfAttention<HIDDEN, NUM_HEADS, E, D>
+// {
+//     type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
 
-    type Error = D::Err;
+//     type Error = D::Err;
 
-    fn try_forward(
-        &self,
-        input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
-    ) -> Result<Self::Output, Self::Error> {
-        let (input, tape) = input.split_tape();
-        let input = (input.clone().put_tape(tape), input.clone(), input);
-        let out = self.0.forward(input);
+//     fn try_forward(
+//         &self,
+//         input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
+//     ) -> Result<Self::Output, Self::Error> {
+//         let (input, tape) = input.split_tape();
+//         let input = (input.clone().put_tape(tape), input.clone(), input);
+//         let out = self.0.forward(input);
 
-        Ok(out)
-    }
-}
+//         Ok(out)
+//     }
+// }
 
-// Batched ModuleMut
-impl<
-        const SEQ_LEN: usize,
-        const HIDDEN: usize,
-        const NUM_HEADS: usize,
-        const B: usize,
-        E: Dtype + Float,
-        D: Device<E>,
-        T: Tape<E, D>,
-    > ModuleMut<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
-    for SelfAttention<HIDDEN, NUM_HEADS, E, D>
-{
-    type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
+// // Batched ModuleMut
+// impl<
+//         const SEQ_LEN: usize,
+//         const HIDDEN: usize,
+//         const NUM_HEADS: usize,
+//         const B: usize,
+//         E: Dtype + Float,
+//         D: Device<E>,
+//         T: Tape<E, D>,
+//     > ModuleMut<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
+//     for SelfAttention<HIDDEN, NUM_HEADS, E, D>
+// {
+//     type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
 
-    type Error = D::Err;
+//     type Error = D::Err;
 
-    fn try_forward_mut(
-        &mut self,
-        input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
-    ) -> Result<Self::Output, Self::Error> {
-        let input2 = input.with_empty_tape();
-        let input3 = input.with_empty_tape();
-        let input = (input, input2, input3);
-        let out = self.0.forward_mut(input);
+//     fn try_forward_mut(
+//         &mut self,
+//         input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
+//     ) -> Result<Self::Output, Self::Error> {
+//         let input2 = input.with_empty_tape();
+//         let input3 = input.with_empty_tape();
+//         let input = (input, input2, input3);
+//         let out = self.0.forward_mut(input);
 
-        Ok(out)
-    }
-}
+//         Ok(out)
+//     }
+// }
 
 struct DecoderBlock<
     const HIDDEN: usize,
@@ -188,6 +189,7 @@ impl<
         D: Device<E>,
     > Module<Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
     for DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>
+    where [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
 
@@ -237,6 +239,7 @@ impl<
         D: Device<E>,
     > Module<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
     for DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>
+    where [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
 
@@ -286,6 +289,7 @@ impl<
         T: Tape<E, D>,
     > ModuleMut<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
     for DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>
+    where [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
 
@@ -427,6 +431,7 @@ impl<
         const SEQ_LEN: usize,
     > Module<Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
     for CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, E, D>
+    where [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
 
@@ -455,6 +460,7 @@ impl<
         const B: usize,
     > Module<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
     for CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, E, D>
+    where [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
 
@@ -484,6 +490,7 @@ impl<
         const B: usize,
     > ModuleMut<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
     for CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, E, D>
+    where [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
 
