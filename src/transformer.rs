@@ -115,9 +115,10 @@ impl<
         &mut self,
         input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
     ) -> Result<Self::Output, Self::Error> {
-        let (input, tape) = input.split_tape();
-        let input = (input.clone().put_tape(tape), input.clone(), input);
-        let out = self.0.forward(input);
+        let input2 = input.with_empty_tape();
+        let input3 = input.with_empty_tape();
+        let input = (input, input2, input3);
+        let out = self.0.forward_mut(input);
 
         Ok(out)
     }

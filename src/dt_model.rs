@@ -317,7 +317,7 @@ where
         let rewards = self.return_head.forward_mut(rewards.put_tape(tape));
         let (rewards, tape) = rewards.split_tape();
 
-        let times = self.time_embeddings.forward(timesteps);
+        let times = self.time_embeddings.forward_mut(timesteps);
 
         let rewards = rewards + times.clone();
         let actions = actions + times.clone();
@@ -330,7 +330,7 @@ where
         let stacked = stacked.put_tape(tape);
 
         let input: Tensor<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>), E, D, T> =
-            dev.build_module::<LN<Config>, E>().forward(stacked);
+            dev.build_module::<LN<Config>, E>().forward_mut(stacked);
 
         // let out = self.transformer.forward(input);
 
