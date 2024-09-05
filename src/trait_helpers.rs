@@ -56,7 +56,7 @@ where
 
 pub fn game_to_inputs<
     E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
-    D: Device<E> + dfdx::tensor::ZerosTensor<usize> ,
+    D: Device<E> + dfdx::tensor::ZerosTensor<usize>,
     Config: DTModelConfig + 'static,
     Game: DTState<E, D, Config>,
 >(
@@ -113,12 +113,20 @@ where
     inputs
 }
 
-fn next_sequence<Config: DTModelConfig + 'static, T>(seq: &mut [T; Config::SEQ_LEN], new_last_element: T) {
+fn next_sequence<Config: DTModelConfig + 'static, T>(
+    seq: &mut [T; Config::SEQ_LEN],
+    new_last_element: T,
+) {
     seq.rotate_left(1);
     seq[seq.len() - 1] = new_last_element;
 }
 
-pub fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::uniform::SampleUniform , D: Device<E>, Config: DTModelConfig + 'static, Game: DTState<E, D, Config>>(
+pub fn get_rewards_to_go<
+    E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
+    D: Device<E>,
+    Config: DTModelConfig + 'static,
+    Game: DTState<E, D, Config>,
+>(
     states: &Vec<Game>,
     actions: &Vec<Game::Action>,
 ) -> Vec<f32> {
@@ -134,7 +142,12 @@ pub fn get_rewards_to_go<E: Dtype + From<f32>+ num_traits::Float + rand_distr::u
     backwards_rewards
 }
 
-fn masked_next<E: Dtype + rand_distr::uniform::SampleUniform, D: Device<E>, Config: DTModelConfig + 'static, S: ConstShape>(
+fn masked_next<
+    E: Dtype + rand_distr::uniform::SampleUniform,
+    D: Device<E>,
+    Config: DTModelConfig + 'static,
+    S: ConstShape,
+>(
     seq: &[Tensor<S, E, D>; Config::SEQ_LEN],
     dev: &D,
 ) -> [Tensor<S, E, D>; Config::SEQ_LEN]{
@@ -148,7 +161,7 @@ pub struct DTModelWrapper<
     D: Device<E>,
     Config: DTModelConfig + 'static,
     Game: DTState<E, D, Config>,
->(pub DTModel<Config,{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>)
+>(pub DTModel<Config, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>)
 where
     [(); Config::MAX_EPISODES_IN_GAME]: Sized,
     [(); Game::ACTION_SIZE]: Sized,
@@ -182,7 +195,7 @@ where
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
 {
-    pub fn evaluate(&self, mut starting_state: Game, temp: E, desired_reward: f32,) {
+    pub fn evaluate(&self, mut starting_state: Game, temp: E, desired_reward: f32) {
         let mut state_history = vec![starting_state.clone()];
         let mut action_history = vec![];
 
@@ -201,7 +214,12 @@ where
         }
     }
 
-    fn play_one_game<R: rand::Rng + ?Sized>(&self, temp: E, desired_reward: f32, rng: &mut R) -> (Vec<Game>, Vec<Game::Action>) {
+    fn play_one_game<R: rand::Rng + ?Sized>(
+        &self,
+        temp: E,
+        desired_reward: f32,
+        rng: &mut R,
+    ) -> (Vec<Game>, Vec<Game::Action>) {
         let mut states = vec![];
         let mut actions = vec![];
 
@@ -216,34 +234,44 @@ where
     }
 
     pub fn online_learn<
-    const B: usize, 
-    R: rand::Rng + ?Sized, 
-    O: Optimizer<DTModel<Config,{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>, D, E>
-    >(&mut self, temp: E, desired_reward: f32, optimizer: &mut O,
-    dev: &D,
-    rng: &mut R) -> E
-    where 
-    [(); Config::MAX_EPISODES_IN_GAME]: Sized,
-    [(); Config::SEQ_LEN]: Sized,
-    [(); 3 * Config::SEQ_LEN]: Sized,
-    [(); Config::HIDDEN_SIZE]: Sized,
-    [(); Config::MLP_INNER]: Sized,
-    [(); Config::NUM_LAYERS]: Sized,
-    [(); Config::NUM_ATTENTION_HEADS]: Sized,
-    [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
+        const B: usize,
+        R: rand::Rng + ?Sized,
+        O: Optimizer<DTModel<Config, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>, D, E>,
+    >(
+        &mut self,
+        temp: E,
+        desired_reward: f32,
+        optimizer: &mut O,
+        dev: &D,
+        rng: &mut R,
+    ) -> E
+    where
+        [(); Config::MAX_EPISODES_IN_GAME]: Sized,
+        [(); Config::SEQ_LEN]: Sized,
+        [(); 3 * Config::SEQ_LEN]: Sized,
+        [(); Config::HIDDEN_SIZE]: Sized,
+        [(); Config::MLP_INNER]: Sized,
+        [(); Config::NUM_LAYERS]: Sized,
+        [(); Config::NUM_ATTENTION_HEADS]: Sized,
+        [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
     {
-        let (batch, actual) = get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng));
+        let (batch, actual) =
+            get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng));
 
         self.train_on_batch::<B, O>(batch, actual, optimizer, dev)
     }
 
-    pub fn save<P: AsRef<Path>>(&self, path: P) 
-    where E: SafeDtype{
+    pub fn save<P: AsRef<Path>>(&self, path: P)
+    where
+        E: SafeDtype,
+    {
         self.0.save_safetensors(path).unwrap()
     }
 
     pub fn load<P: AsRef<Path>>(&mut self, path: P)
-    where E: SafeDtype{
+    where
+        E: SafeDtype,
+    {
         self.0.load_safetensors(path).unwrap();
     }
 }
@@ -260,15 +288,7 @@ pub fn get_batch_from_fn<
     rng: &mut R,
     player_fn: F,
 ) -> (
-    BatchedInput<
-        B,
-        { Game::STATE_SIZE },
-        { Game::ACTION_SIZE },
-        E,
-        D,
-        Config,
-        NoneTape,
-    >,
+    BatchedInput<B, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config, NoneTape>,
     [Game::Action; B],
 )
 where
@@ -278,17 +298,11 @@ where
     [(); 3 * Config::SEQ_LEN]: Sized,
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::MLP_INNER]: Sized,
-    [(); Config::NUM_ATTENTION_HEADS]: Sized
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
 {
     let dev: D = Default::default();
-    let mut batch: [Input<
-        { Game::STATE_SIZE },
-        { Game::ACTION_SIZE },
-        E,
-        D,
-        Config,
-        NoneTape,
-    >; B] = std::array::from_fn(|_| (dev.zeros(), dev.zeros(), dev.zeros(), dev.zeros()));
+    let mut batch: [Input<{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config, NoneTape>; B] =
+        std::array::from_fn(|_| (dev.zeros(), dev.zeros(), dev.zeros(), dev.zeros()));
 
     let mut num_examples = 0;
     let mut true_actions: [Option<Game::Action>; B] = std::array::from_fn(|_| None);
@@ -296,7 +310,7 @@ where
 
     while num_examples < B {
         // Play one game
-        let (states, actions) = player_fn(rng);
+        let (mut states, mut actions) = player_fn(rng);
 
         // Update true actions (for training)
         for action in actions.iter() {
@@ -307,12 +321,15 @@ where
             num_actions += 1;
         }
 
-        // Turn into tensor inputs
-        let mut inputs = game_to_inputs(states, actions, &dev);
-
         // Throw away inputs above size B
+        actions.truncate(B - num_examples);
+        states.truncate(B - num_examples);
+        // Turn into tensor inputs
+        
+        let inputs = game_to_inputs(states, actions, &dev);
+
+        
         let len = inputs.len();
-        inputs.truncate(B - num_examples);
 
         // Add the examples to the batch
         for (i, input) in inputs.into_iter().enumerate() {
