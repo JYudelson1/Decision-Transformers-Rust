@@ -14,8 +14,8 @@ impl<
         D: Device<E> + DeviceBuildExt,
         Config: DTModelConfig,
         Game: DTState<E, D, Config>,
-    > DTModelWrapper<E, D,Config, Game>
-    where
+    > DTModelWrapper<E, D, Config, Game>
+where
     [(); Config::MAX_EPISODES_IN_GAME]: Sized,
     [(); Config::SEQ_LEN]: Sized,
     [(); 3 * Config::SEQ_LEN]: Sized,
@@ -26,59 +26,52 @@ impl<
     [(); Game::STATE_SIZE]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
 {
-    pub fn train_on_batch<const B: usize>(
-    &mut self, 
-    batch: BatchedInput<
-        B,
-        { Game::STATE_SIZE },
-        { Game::ACTION_SIZE },
-        E,
-        D,
-        Config
-    >,
-    actions: [Game::Action; B],
-    optimizer: &mut Adam<
-        DTModel<Config,{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>,
-        E,
-        D,
-    >,
-    dev: &D,
-) -> E where
-    [(); 3 * { Config::SEQ_LEN }]: Sized,
-{
-    // Using the [dfdx dox](https://docs.rs/dfdx/latest/dfdx/index.html)
-    let grads = self.0.alloc_grads();
-    // Trace gradients through forward pass
-    let batch: BatchedInput<
-        B,
-        { Game::STATE_SIZE },
-        { Game::ACTION_SIZE },
-        E,
-        D,
-        Config,
-        OwnedTape<E, D>,
-    > = (
-        batch.0.traced(grads),
-        batch.1,
-        batch.2,
-        batch.3,
-    );
-    let y = self.0.forward_mut(batch);
+    pub fn train_on_batch<
+        const B: usize,
+        O: Optimizer<DTModel<Config, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>, D, E>,
+    >(
+        &mut self,
+        batch: BatchedInput<B, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config>,
+        actions: [Game::Action; B],
+        optimizer: &mut O,
+        dev: &D,
+    ) -> E
+    where
+        [(); 3 * { Config::SEQ_LEN }]: Sized,
+    {
+        // Using the [dfdx dox](https://docs.rs/dfdx/latest/dfdx/index.html)
+        let mut grads = self.0.alloc_grads();
+        // Trace gradients through forward pass
+        let batch: BatchedInput<
+            B,
+            { Game::STATE_SIZE },
+            { Game::ACTION_SIZE },
+            E,
+            D,
+            Config,
+            OwnedTape<E, D>,
+        > = (batch.0.traced(grads), batch.1, batch.2, batch.3);
+        let y = self.0.forward_mut(batch);
 
-    // compute loss & run backpropagation
-    let actual = actions
-        .map(|action| Game::action_to_tensor(&action))
-        .stack();
-    let pred_index = dev.tensor([Config::SEQ_LEN - 1; B]);
-    let pred: Tensor<(Const<B>, Const<{ Game::ACTION_SIZE }>), E, D, OwnedTape<E, D>> =
-    y.select(pred_index);
-    let loss = loss(pred, actual);
-    let loss_value = loss.as_vec()[0];
+        // compute loss & run backpropagation
+        let actual = actions
+            .map(|action| Game::action_to_tensor(&action))
+            .stack();
+        let pred_index = dev.tensor([Config::SEQ_LEN - 1; B]);
+        let pred: Tensor<(Const<B>, Const<{ Game::ACTION_SIZE }>), E, D, OwnedTape<E, D>> =
+            y.select(pred_index);
+        let loss = loss(pred, actual);
+        let loss_value = loss.as_vec()[0];
+        grads = loss.backward();
+        println!("{:?}", grads);
+        assert!(false);
 
-    // apply gradients
-    optimizer.update(&mut self.0, &loss.backward()).unwrap();
+        // apply gradients
+        optimizer.update(&mut self.0, &grads).unwrap();
 
+        // Zero grads
+        self.0.zero_grads(&mut grads);
 
-    loss_value
+        loss_value
     }
 }
