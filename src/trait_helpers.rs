@@ -7,6 +7,7 @@ use crate::{
 };
 use dfdx::{prelude::*, tensor::safetensors::SafeDtype};
 use num_traits::Float;
+use rand::seq::IteratorRandom;
 use rand_distr::uniform::SampleUniform;
 
 use crate::{
@@ -244,6 +245,7 @@ where
         optimizer: &mut O,
         dev: &D,
         rng: &mut R,
+        cap_from_game: Option<usize>
     ) -> E
     where
         [(); Config::MAX_EPISODES_IN_GAME]: Sized,
@@ -256,7 +258,7 @@ where
         [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
     {
         let (batch, actual) =
-            get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng));
+            get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng), cap_from_game);
 
         self.train_on_batch::<B, O>(batch, actual, optimizer, dev)
     }
@@ -287,6 +289,7 @@ pub fn get_batch_from_fn<
 >(
     rng: &mut R,
     player_fn: F,
+    cap_from_game: Option<usize>
 ) -> (
     BatchedInput<B, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config, NoneTape>,
     [Game::Action; B],
@@ -310,7 +313,35 @@ where
 
     while num_examples < B {
         // Play one game
-        let (mut states, mut actions) = player_fn(rng);
+        let (states, actions) = player_fn(rng);
+        println!("Starting with {} states", states.len());
+        let (mut states, mut actions) = if let Some(cap) = cap_from_game {
+            let mut indices = (0..states.len()).choose_multiple(rng, cap);
+            indices.sort();
+            let mut indices_2 = indices.clone();
+            let states: Vec<Game> = states.into_iter().enumerate().filter(|(i, _)| {
+                if !indices.is_empty() && indices[0] == *i {
+                    indices.remove(0);
+                    true
+                } else {
+                    false
+                }
+            }).map(|(_, element)| element).collect();
+
+            let actions: Vec<Game::Action> = actions.into_iter().enumerate().filter(|(i, _)| {
+                if !indices_2.is_empty() && indices_2[0] == *i {
+                    indices_2.remove(0);
+                    true
+                } else {
+                    false
+                }
+            }).map(|(_, element)| element).collect();
+
+            (states, actions)
+        } else {
+            (states, actions)
+        };
+        println!("Using {} states", states.len());
 
         // Update true actions (for training)
         for action in actions.iter() {

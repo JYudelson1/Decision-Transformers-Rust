@@ -74,6 +74,7 @@ pub trait GetOfflineData<
     /// Provided method
     fn get_batch<const B: usize, R: rand::Rng + ?Sized>(
         rng: &mut R,
+        cap_from_game: Option<usize>
     ) -> (
         BatchedInput<B, { Self::STATE_SIZE }, { Self::ACTION_SIZE }, E, D, Config, NoneTape>,
         [Self::Action; B],
@@ -86,7 +87,7 @@ pub trait GetOfflineData<
         [(); Config::MLP_INNER]: Sized,
         [(); Config::NUM_ATTENTION_HEADS]: Sized,
     {
-        get_batch_from_fn(rng, Self::play_one_game)
+        get_batch_from_fn(rng, Self::play_one_game, cap_from_game)
     }
 }
 
