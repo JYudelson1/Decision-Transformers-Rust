@@ -48,7 +48,7 @@ where
         };
 
         if total_reward > desired_total_reward {
-            panic!("Attempting to reach a reward of {desired_total_reward}, but reward is already {total_reward}");
+            // println!("Attempting to reach a reward of {desired_total_reward}, but reward is already {total_reward}");
         } else {
             let reward_diff = desired_total_reward - total_reward;
             for reward in rewards_so_far.iter_mut() {
