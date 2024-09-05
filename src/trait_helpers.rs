@@ -5,7 +5,7 @@ use crate::{
     utils::{stack_usize, stack_usize_batched},
     DTModel, DTModelConfig,
 };
-use dfdx::{optim::Adam, prelude::*, tensor::safetensors::SafeDtype};
+use dfdx::{prelude::*, tensor::safetensors::SafeDtype};
 use num_traits::Float;
 use rand_distr::uniform::SampleUniform;
 

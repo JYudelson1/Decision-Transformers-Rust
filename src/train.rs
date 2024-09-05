@@ -1,4 +1,4 @@
-use dfdx::{optim::Adam, prelude::*};
+use dfdx::prelude::*;
 
 use crate::{dt_model::BatchedInput, DTModel, DTModelConfig, DTModelWrapper, DTState};
 

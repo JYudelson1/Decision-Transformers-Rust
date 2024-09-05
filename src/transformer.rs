@@ -1,12 +1,12 @@
 use crate::self_attn::SelfAttention;
 use dfdx::{
     nn::{
-        modules::{FastGeLU, LayerNorm1D, Linear, MultiHeadAttention},
+        modules::{FastGeLU, LayerNorm1D, Linear},
         Module, ModuleMut, ModuleVisitor, TensorCollection,
     },
     prelude::Device,
     shapes::{Const, Dtype},
-    tensor::{PutTape, SplitTape, Tape, Tensor, WithEmptyTape},
+    tensor::{Tape, Tensor, WithEmptyTape},
 };
 use num_traits::Float;
 use rand_distr::uniform::SampleUniform;
