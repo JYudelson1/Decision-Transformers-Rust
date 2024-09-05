@@ -64,8 +64,6 @@ where
         let loss = loss(pred, actual);
         let loss_value = loss.as_vec()[0];
         grads = loss.backward();
-        println!("{:?}", grads);
-        assert!(false);
 
         // apply gradients
         optimizer.update(&mut self.0, &grads).unwrap();
