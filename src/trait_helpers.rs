@@ -212,11 +212,7 @@ where
         (states, actions)
     }
 
-    pub fn online_learn<const B: usize, R: rand::Rng + ?Sized>(&mut self, temp: E, desired_reward: f32, optimizer: &mut Adam<
-        DTModel<Config,{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>,
-        E,
-        D,
-    >,
+    pub fn online_learn<const B: usize, R: rand::Rng + ?Sized, O: Optimizer<DTModel<Config,{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D>, D, E>>(&mut self, temp: E, desired_reward: f32, optimizer: &mut O,
     dev: &D,
     rng: &mut R) -> E
     where 
@@ -229,7 +225,7 @@ where
     [(); Config::NUM_ATTENTION_HEADS]: Sized{
         let (batch, actual) = get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng));
 
-        self.train_on_batch::<B>(batch, actual, optimizer, dev)
+        self.train_on_batch::<B, _>(batch, actual, optimizer, dev)
     }
 
     pub fn save<P: AsRef<Path>>(&self, path: P) 
