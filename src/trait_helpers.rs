@@ -196,7 +196,7 @@ where
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
 {
-    pub fn evaluate(&self, mut starting_state: Game, temp: E, desired_reward: f32) {
+    pub fn evaluate(&self, mut starting_state: Game, temp: E, desired_reward: f32) -> Game{
         let mut state_history = vec![starting_state.clone()];
         let mut action_history = vec![];
 
@@ -213,6 +213,8 @@ where
 
             starting_state.print()
         }
+
+        starting_state
     }
 
     fn play_one_game<R: rand::Rng + ?Sized>(
