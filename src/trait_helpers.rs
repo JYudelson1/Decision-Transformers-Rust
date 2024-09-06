@@ -343,6 +343,10 @@ where
             (states, actions)
         };
 
+        // Throw away inputs above size B
+        actions.truncate(B - num_examples);
+        states.truncate(B - num_examples);
+
         // Update true actions (for training)
         for action in actions.iter() {
             if num_actions == B {
@@ -352,11 +356,7 @@ where
             num_actions += 1;
         }
 
-        // Throw away inputs above size B
-        actions.truncate(B - num_examples);
-        states.truncate(B - num_examples);
         // Turn into tensor inputs
-        
         let inputs = game_to_inputs(states, actions, &dev);
 
         
@@ -370,7 +370,11 @@ where
 
         // Mark down the number added
         num_examples += len;
+
+        assert_eq!(num_examples, num_actions, "Number of examples and actions should match");
     }
+
+    assert_eq!(num_examples, B, "Batch should be completely filled");
 
     let true_actions = true_actions.map(|inner| inner.unwrap());
 
