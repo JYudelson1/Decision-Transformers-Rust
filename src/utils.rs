@@ -1,6 +1,6 @@
 use dfdx::prelude::*;
 
-use crate::DTModelConfig;
+use crate::{dt_model::Input, DTModelConfig};
 
 pub fn stack_usize<E: Dtype, D: Device<E>, Config: DTModelConfig>(
     tensors: [Tensor<(), usize, D>; Config::SEQ_LEN],
@@ -32,4 +32,28 @@ pub fn stack_usize_batched<
 
     dev.tensor(data)
     //dev.tensor(tensors)
+}
+
+pub fn print_input<const S: usize, const A: usize, E: Dtype, D: Device<E>, Config: DTModelConfig>(
+    inp: &Input<S, A, E, D, Config>,
+) where
+    [(); Config::SEQ_LEN]: Sized,
+{
+    println!("States:");
+    print_seq(&inp.0);
+    println!("Actions:");
+    print_seq(&inp.1);
+    println!("Rewards:");
+    print_seq(&inp.2);
+    println!("Timesteps:");
+    println!("{:?}", &inp.3.as_vec());
+}
+
+fn print_seq<E: Dtype, D: Device<E>, Config: DTModelConfig, const M: usize>(
+    seq: &Tensor<(Const<{ Config::SEQ_LEN }>, Const<M>), E, D>,
+) {
+    let dev: D = Default::default();
+    for i in 0..Config::SEQ_LEN {
+        println!("{i}: {:?}", seq.clone().select(dev.tensor(i)).as_vec());
+    }
 }
