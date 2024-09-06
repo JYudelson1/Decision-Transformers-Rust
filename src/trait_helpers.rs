@@ -104,9 +104,8 @@ where
 
         let input = (
             states_in_seq.clone().stack(),
-            //masked_next(&actions_in_seq, dev).stack(),
-            actions_in_seq.clone().stack(),
-            masked_next(&rtg_in_seq, dev).stack(),
+            masked_next(&actions_in_seq, dev).stack(),
+            rtg_in_seq.clone().stack(),
             stack_usize(timesteps_in_seq.clone(), &dev),
         );
         inputs.push(input)
