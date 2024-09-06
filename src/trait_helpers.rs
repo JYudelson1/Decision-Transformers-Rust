@@ -105,6 +105,7 @@ where
         let input = (
             states_in_seq.clone().stack(),
             masked_next(&actions_in_seq, dev).stack(),
+            //actions_in_seq.clone().stack(),
             rtg_in_seq.clone().stack(),
             stack_usize(timesteps_in_seq.clone(), &dev),
         );
@@ -131,20 +132,26 @@ pub fn get_rewards_to_go<
     states: &Vec<Game>,
     actions: &Vec<Game::Action>,
 ) -> Vec<f32> {
-    let mut backwards_rewards = vec![];
-    let mut rewards_so_far = 0.0;
+    let mut rewards_in_order = vec![];
+    let mut total_reward = 0.0;
     assert_eq!(actions.len(), states.len());
     for i in 0..actions.len() {
         let reward = Game::get_reward(&states[i], actions[i].clone());
-        rewards_so_far += reward;
-        backwards_rewards.push(rewards_so_far);
+        total_reward += reward;
+        rewards_in_order.push(reward);
     }
-    backwards_rewards.reverse();
-    backwards_rewards
+
+    for i in 0..actions.len() {
+        let step_reward = rewards_in_order[i];
+        rewards_in_order[i] = total_reward;
+        total_reward -= step_reward;
+    }
+
+    rewards_in_order
 }
 
 fn masked_next<
-    E: Dtype + rand_distr::uniform::SampleUniform,
+    E: Dtype + rand_distr::uniform::SampleUniform + From<f32>,
     D: Device<E>,
     Config: DTModelConfig + 'static,
     S: ConstShape,
@@ -153,7 +160,7 @@ fn masked_next<
     dev: &D,
 ) -> [Tensor<S, E, D>; Config::SEQ_LEN]{
     let mut new_seq = seq.clone();
-    new_seq[new_seq.len() - 1] = dev.zeros();
+    new_seq[new_seq.len() - 1] = dev.zeros() - E::from(1.0);
     new_seq
 }
 
@@ -377,6 +384,11 @@ where
     assert_eq!(num_examples, B, "Batch should be completely filled");
 
     let true_actions = true_actions.map(|inner| inner.unwrap());
+
+    // for i in 0..B {
+    //     print_input(&batch[i]);
+    // }
+    // assert!(false);
 
     let batched_inputs = batch_inputs(batch, &dev);
 
