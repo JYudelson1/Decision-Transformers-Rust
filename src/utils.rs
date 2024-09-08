@@ -34,6 +34,7 @@ pub fn stack_usize_batched<
     //dev.tensor(tensors)
 }
 
+#[allow(dead_code)]
 pub fn print_input<const S: usize, const A: usize, E: Dtype, D: Device<E>, Config: DTModelConfig>(
     inp: &Input<S, A, E, D, Config>,
 ) where
@@ -49,6 +50,7 @@ pub fn print_input<const S: usize, const A: usize, E: Dtype, D: Device<E>, Confi
     println!("{:?}", &inp.3.as_vec());
 }
 
+#[allow(dead_code)]
 fn print_seq<E: Dtype, D: Device<E>, Config: DTModelConfig, const M: usize>(
     seq: &Tensor<(Const<{ Config::SEQ_LEN }>, Const<M>), E, D>,
 ) {
