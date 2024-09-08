@@ -6,7 +6,29 @@ pub fn loss<const B: usize, const A: usize, E: Dtype, D: Device<E>, T: Tape<E, D
     action_pred: Tensor<(Const<B>, Const<A>), E, D, T>,
     action_actual: Tensor<(Const<B>, Const<A>), E, D, NoneTape>,
 ) -> Tensor<Rank0, E, D, T> {
-    mse_loss(action_pred, action_actual)
+    // println!(
+    //     "True: {:?}",
+    //     action_actual
+    //         .with_empty_tape()
+    //         .select(D::default().tensor(0))
+    //         .as_vec()
+    // );
+    // println!(
+    //     "Pred: {:?}",
+    //     action_pred
+    //         .with_empty_tape()
+    //         .select(D::default().tensor(0))
+    //         .as_vec()
+    // );
+    // mse_loss(action_pred, action_actual)
+    let loss = action_pred.bce_with_logits(action_actual);
+    // println!(
+    //     "Loss: {:?}",
+    //     loss.with_empty_tape()
+    //         .select(D::default().tensor(0))
+    //         .as_vec()
+    // );
+    loss.mean()
 }
 
 impl<
