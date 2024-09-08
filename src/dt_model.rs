@@ -323,11 +323,8 @@ where
         let dev: D = Default::default();
 
         let states = self.state_head.forward_mut(states);
-        let (states, tape) = states.split_tape();
-        let actions = self.action_head.forward_mut(actions.put_tape(tape));
-        let (actions, tape) = actions.split_tape();
-        let rewards = self.return_head.forward_mut(rewards.put_tape(tape));
-        let (rewards, tape) = rewards.split_tape();
+        let actions = self.action_head.forward_mut(actions.retaped::<T>());
+        let rewards = self.return_head.forward_mut(rewards.retaped::<T>());
 
         let times = self.time_embeddings.forward_mut(timesteps);
 
@@ -339,7 +336,7 @@ where
             .stack()
             .permute::<_, Axes4<0, 2, 1, 3>>()
             .reshape::<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>)>();
-        let stacked = stacked.put_tape(tape);
+        // let stacked = stacked.put_tape(tape);
 
         let input: Tensor<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>), E, D, T> =
             dev.build_module::<LN<Config>, E>().forward_mut(stacked);
