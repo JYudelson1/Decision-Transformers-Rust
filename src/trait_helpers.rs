@@ -179,7 +179,8 @@ where
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::MLP_INNER]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
-    [(); Config::NUM_ATTENTION_HEADS]: Sized;
+    [(); Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized;
 
 impl<
         E: Dtype
@@ -202,6 +203,7 @@ where
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
 {
     pub fn evaluate(&self, mut starting_state: Game, temp: E, desired_reward: f32, verbose: bool) -> Game{
         let mut state_history = vec![starting_state.clone()];
@@ -265,6 +267,7 @@ where
         [(); Config::NUM_LAYERS]: Sized,
         [(); Config::NUM_ATTENTION_HEADS]: Sized,
         [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
+        [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
     {
         let (batch, actual) =
             get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng), cap_from_game);

@@ -53,6 +53,7 @@ pub trait DTState<
         [(); Config::MAX_EPISODES_IN_GAME]: Sized,
         [(); Config::NUM_ATTENTION_HEADS]: Sized,
         [(); Config::NUM_LAYERS]: Sized,
+        [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
     {
         let dev: D = Default::default();
         let mut model =

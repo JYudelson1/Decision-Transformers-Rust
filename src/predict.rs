@@ -25,6 +25,7 @@ where
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
 {
     pub fn make_move(
         &self,
@@ -135,7 +136,7 @@ where
         // Forward the input
         let out: Tensor<
             (
-                Const<{ Config::SEQ_LEN }>,
+                //Const<{ Config::SEQ_LEN }>,
                 Const<{ Game::ACTION_SIZE }>,
             ),
             E,
@@ -143,8 +144,9 @@ where
         > = self.0.forward(input);
 
         // Select the last segment
-        let logits: Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D> =
-            out.select(dev.tensor(Config::SEQ_LEN - 1)) / temperature;
+        // let logits: Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D> =
+        //     out.select(dev.tensor(Config::SEQ_LEN - 1)) / temperature;
+        let logits = out / temperature;
         let probs: Tensor<(Const<{ Game::ACTION_SIZE }>,), E, D> = logits.softmax();
 
         let mut options = vec![];

@@ -26,6 +26,7 @@ where
     [(); Game::STATE_SIZE]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
 {
     pub fn train_on_batch<
         const B: usize,
@@ -58,9 +59,10 @@ where
         let actual = actions
             .map(|action| Game::action_to_tensor(&action))
             .stack();
-        let pred_index = dev.tensor([Config::SEQ_LEN - 1; B]);
-        let pred: Tensor<(Const<B>, Const<{ Game::ACTION_SIZE }>), E, D, OwnedTape<E, D>> =
-            y.select(pred_index);
+        // let pred_index = dev.tensor([Config::SEQ_LEN - 1; B]);
+        // let pred: Tensor<(Const<B>, Const<{ Game::ACTION_SIZE }>), E, D, OwnedTape<E, D>> =
+        //     y.select(pred_index);
+        let pred = y;
         let loss = loss(pred, actual);
         let loss_value = loss.as_vec()[0];
         grads = loss.backward();

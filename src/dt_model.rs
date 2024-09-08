@@ -17,7 +17,7 @@ type LN<Config: DTModelConfig> = dfdx::nn::builders::LayerNorm1D<{Config::HIDDEN
 
 //type StatePredictor<const S: usize> = dfdx::nn::modules::Linear<{Config::HIDDEN_SIZE}, S, f32, STORAGE>;
 type ActionPredictor<Config: DTModelConfig, const A: usize, E, D> =
-    dfdx::nn::modules::Linear<{ Config::HIDDEN_SIZE }, A, E, D>;
+    dfdx::nn::modules::Linear<{ 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}, A, E, D>;
 //type ReturnPredictor = dfdx::nn::modules::Linear<{Config::HIDDEN_SIZE}, 1, f32, STORAGE>;
 
 type DTTransformerInner<Config: DTModelConfig, E, D> = CustomTransformerDecoder<{Config::HIDDEN_SIZE}, {Config::MLP_INNER}, {Config::NUM_ATTENTION_HEADS}, {Config::NUM_LAYERS}, {3 * Config::SEQ_LEN}, E, D>;
@@ -84,6 +84,7 @@ pub struct DTModel<
     [(); Config::MAX_EPISODES_IN_GAME]: Sized,
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
+    [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
 {
     pub transformer: DTTransformerInner<Config, E, D>,
     pub state_head: StateHead<Config, STATE, E, D>,
@@ -108,6 +109,7 @@ impl<
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
+    [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
 {
     type To<E2: Dtype, D2: Device<E2>> = DTModel<Config, S, A, E2, D2>;
 
@@ -171,8 +173,9 @@ where
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
 {
-    type Output = Tensor<(Const<{Config::SEQ_LEN}>, Const<A>), E, D>;
+    type Output = Tensor<(Const<A>,), E, D>;
 
     type Error = ();
 
@@ -203,11 +206,12 @@ where
 
         let out = self.transformer.forward(input);
 
-        let out = out
-            .reshape::<(Const<{Config::SEQ_LEN}>, Const<3>, Const<{Config::HIDDEN_SIZE}>)>()
-            .permute::<_, Axes3<1, 0, 2>>();
+        // let out = out
+        //     .reshape::<(Const<{Config::SEQ_LEN}>, Const<3>, Const<{Config::HIDDEN_SIZE}>)>()
+        //     .permute::<_, Axes3<1, 0, 2>>();
+        let out = out.reshape::<(Const<{3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}>,)>();
 
-        let actions = self.predict_action.forward(out.select(dev.tensor(2)));
+        let actions = self.predict_action.forward(out);
 
         Ok(actions)
     }
@@ -232,8 +236,9 @@ where
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
 {
-    type Output = Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<A>), E, D, NoneTape>;
+    type Output = Tensor<(Const<B>, Const<A>), E, D, NoneTape>;
 
     type Error = ();
 
@@ -265,16 +270,19 @@ where
 
         let out = self.transformer.forward(input);
 
-        let out = out
-            .reshape::<(
-                Const<B>,
-                Const<{Config::SEQ_LEN}>,
-                Const<3>,
-                Const<{Config::HIDDEN_SIZE}>,
-            )>()
-            .permute::<_, Axes4<0, 2, 1, 3>>();
+        // let out = out
+        //     .reshape::<(
+        //         Const<B>,
+        //         Const<{Config::SEQ_LEN}>,
+        //         Const<3>,
+        //         Const<{Config::HIDDEN_SIZE}>,
+        //     )>()
+        //     .permute::<_, Axes4<0, 2, 1, 3>>();
 
-        let actions = self.predict_action.forward(out.select(dev.tensor([2; B]))); // TOOD: Check correctness
+        // let actions = self.predict_action.forward(out.select(dev.tensor([2; B]))); // TOOD: Check correctness
+        let out = out.reshape::<(Const<B>,Const<{3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}>,)>();
+
+        let actions = self.predict_action.forward(out);
 
         Ok(actions)
     }
@@ -301,8 +309,9 @@ where
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
 {
-    type Output = Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<A>), E, D, T>;
+    type Output = Tensor<(Const<B>, Const<A>), E, D, T>;
 
     type Error = ();
 
@@ -322,9 +331,12 @@ where
 
         let times = self.time_embeddings.forward_mut(timesteps);
 
-        let rewards = rewards + times.clone();
-        let actions = actions + times.clone();
-        let states = states + times;
+        let rewards = rewards.put_tape(tape) + times.clone();
+        let (rewards, tape) = rewards.split_tape();
+        let actions = actions.put_tape(tape) + times.clone();
+        let (actions, tape) = actions.split_tape();
+        let states = states.put_tape(tape) + times;
+        let (states, tape) = states.split_tape();
 
         let stacked = [rewards, states, actions]
             .stack()
@@ -337,18 +349,21 @@ where
 
         let out = self.transformer.forward_mut(input);
 
-        let out = out
-            .reshape::<(
-                Const<B>,
-                Const<{Config::SEQ_LEN}>,
-                Const<3>,
-                Const<{Config::HIDDEN_SIZE}>,
-            )>()
-            .permute::<_, Axes4<0, 2, 1, 3>>();
+        // let out = out
+        //     .reshape::<(
+        //         Const<B>,
+        //         Const<{Config::SEQ_LEN}>,
+        //         Const<3>,
+        //         Const<{Config::HIDDEN_SIZE}>,
+        //     )>()
+        //     .permute::<_, Axes4<0, 2, 1, 3>>();
 
-        let actions = self
-            .predict_action
-            .forward_mut(out.select(dev.tensor([2; B]))); // TOOD: Check correctness
+        // let actions = self
+        //     .predict_action
+        //     .forward_mut(out.select(dev.tensor([2; B]))); // TOOD: Check correctness
+        let out = out.reshape::<(Const<B>,Const<{3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}>,)>();
+
+        let actions = self.predict_action.forward_mut(out);
 
         Ok(actions)
     }
