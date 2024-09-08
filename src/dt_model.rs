@@ -296,7 +296,7 @@ impl<
         const B: usize,
         T: Tape<E, D>,
         E: Dtype + Float,
-        D: Device<E> + DeviceBuildExt,
+        D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize>,
         Config: DTModelConfig + 'static
     > ModuleMut<BatchedInput<B, S, A, E, D, Config, T>>
     for DTModel<Config, S, A, E, D>
@@ -331,12 +331,9 @@ where
 
         let times = self.time_embeddings.forward_mut(timesteps);
 
-        let rewards = rewards.put_tape(tape) + times.clone();
-        let (rewards, tape) = rewards.split_tape();
-        let actions = actions.put_tape(tape) + times.clone();
-        let (actions, tape) = actions.split_tape();
-        let states = states.put_tape(tape) + times;
-        let (states, tape) = states.split_tape();
+        let rewards = rewards + times.clone();
+        let actions = actions + times.clone();
+        let states = states + times;
 
         let stacked = [rewards, states, actions]
             .stack()
