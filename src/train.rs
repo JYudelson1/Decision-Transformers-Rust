@@ -36,7 +36,6 @@ where
         batch: BatchedInput<B, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config>,
         actions: [Game::Action; B],
         optimizer: &mut O,
-        dev: &D,
     ) -> E
     where
         [(); 3 * { Config::SEQ_LEN }]: Sized,
@@ -59,9 +58,7 @@ where
         let actual = actions
             .map(|action| Game::action_to_tensor(&action))
             .stack();
-        // let pred_index = dev.tensor([Config::SEQ_LEN - 1; B]);
-        // let pred: Tensor<(Const<B>, Const<{ Game::ACTION_SIZE }>), E, D, OwnedTape<E, D>> =
-        //     y.select(pred_index);
+
         let pred = y;
         let loss = loss(pred, actual);
         let loss_value = loss.as_vec()[0];

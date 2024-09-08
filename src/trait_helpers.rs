@@ -254,7 +254,6 @@ where
         temp: E,
         desired_reward: f32,
         optimizer: &mut O,
-        dev: &D,
         rng: &mut R,
         cap_from_game: Option<usize>
     ) -> E
@@ -272,7 +271,7 @@ where
         let (batch, actual) =
             get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng), cap_from_game);
 
-        self.train_on_batch::<B, O>(batch, actual, optimizer, dev)
+        self.train_on_batch::<B, O>(batch, actual, optimizer)
     }
 
     pub fn save<P: AsRef<Path>>(&self, path: P)
