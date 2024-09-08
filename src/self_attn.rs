@@ -200,11 +200,10 @@ where
                 Const<{ HIDDEN / NUM_HEADS }>,
             )>()?
             .try_permute::<_, Axes4<0, 2, 1, 3>>()?;
-        let (v, tape) = v.split_tape();
 
         let k = self
             .w_k
-            .forward(input.clone().put_tape(tape))
+            .forward(input.clone().retaped::<T>())
             .try_reshape::<(
                 Const<B>,
                 Const<SEQ_LEN>,
@@ -212,11 +211,10 @@ where
                 Const<{ HIDDEN / NUM_HEADS }>,
             )>()?
             .try_permute::<_, Axes4<0, 2, 3, 1>>()?;
-        let (k, tape) = k.split_tape();
 
         let q = self
             .w_q
-            .forward(input.put_tape(tape))
+            .forward(input.retaped::<T>())
             .try_reshape::<(
                 Const<B>,
                 Const<SEQ_LEN>,
