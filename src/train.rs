@@ -11,7 +11,7 @@ pub fn loss<const B: usize, const A: usize, E: Dtype, D: Device<E>, T: Tape<E, D
 
 impl<
         E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
-        D: Device<E> + DeviceBuildExt,
+        D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize>,
         Config: DTModelConfig + 'static,
         Game: DTState<E, D, Config>,
     > DTModelWrapper<E, D, Config, Game>
