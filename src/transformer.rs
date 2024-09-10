@@ -4,7 +4,7 @@ use dfdx::{
         modules::{FastGeLU, LayerNorm1D, Linear},
         Module, ModuleMut, ModuleVisitor, TensorCollection,
     },
-    prelude::Device,
+    prelude::{BroadcastTo, Device, TryStack},
     shapes::{Const, Dtype},
     tensor::{Tape, Tensor, WithEmptyTape},
 };
@@ -189,17 +189,17 @@ impl<
         let skip = input.with_empty_tape();
 
         // Self attention
-        let mha_out = self.self_attn.forward_mut(input);
+        let mha_out = self.self_attn.forward_mut(self.ln.forward(input));
         let residual_out = skip + mha_out;
 
         // Layer norm
-        let ln_out = self.ln.forward_mut(residual_out);
+        //let ln_out = self.ln.forward_mut(residual_out);
 
         // Second skip
-        let mlp_skip = ln_out.with_empty_tape();
+        let mlp_skip = residual_out.with_empty_tape();
 
         // Mlp
-        let y = self.mlp_1.forward_mut(ln_out);
+        let y = self.mlp_1.forward_mut(self.ln.forward(residual_out));
         let y = self.gelu.forward_mut(y);
         let y = self.mlp_2.forward_mut(y);
         let y = self.gelu.forward_mut(y);
@@ -207,9 +207,9 @@ impl<
         let mlp_out = y + mlp_skip;
 
         // Norm
-        let out = self.ln.forward_mut(mlp_out);
+        //let out = self.ln.forward_mut(mlp_out);
 
-        Ok(out)
+        Ok(mlp_out)
     }
 }
 
@@ -223,6 +223,7 @@ pub struct CustomTransformerDecoder<
     D: Device<E>,
 > {
     all_blocks: Vec<DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>>,
+    mask: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
 }
 
 impl<
@@ -235,10 +236,7 @@ impl<
         D: Device<E>,
     > CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, E, D>
 {
-    fn get_layer(
-        &self,
-        i: usize,
-    ) -> &DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D> {
+    fn get_layer(&self, i: usize) -> &DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D> {
         &self.all_blocks[i]
     }
 
@@ -301,6 +299,7 @@ impl<
             // above. This conversion is done using the ModuleFields trait.
             |modules| CustomTransformerDecoder {
                 all_blocks: modules,
+                mask: build_mask::<SEQ_LEN, HIDDEN, V::E2, V::D2>(),
             },
         )
     }
@@ -317,7 +316,8 @@ impl<
         const SEQ_LEN: usize,
     > Module<Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
     for CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, E, D>
-    where [(); HIDDEN / NUM_HEADS]: Sized,
+where
+    [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
 
@@ -327,6 +327,9 @@ impl<
         &self,
         mut input: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
     ) -> Result<Self::Output, Self::Error> {
+
+        input = input * self.mask.clone();
+
         for layer in &self.all_blocks {
             input = layer.forward(input);
         }
@@ -346,7 +349,8 @@ impl<
         const B: usize,
     > Module<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
     for CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, E, D>
-    where [(); HIDDEN / NUM_HEADS]: Sized,
+where
+    [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
 
@@ -356,6 +360,10 @@ impl<
         &self,
         mut input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
     ) -> Result<Self::Output, Self::Error> {
+
+        let mask: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D> = self.mask.clone().broadcast();
+        input = input * mask;
+
         for layer in &self.all_blocks {
             input = layer.forward(input);
         }
@@ -376,7 +384,8 @@ impl<
         const B: usize,
     > ModuleMut<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
     for CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, E, D>
-    where [(); HIDDEN / NUM_HEADS]: Sized,
+where
+    [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
 
@@ -391,4 +400,19 @@ impl<
         }
         Ok(input)
     }
+}
+
+fn build_mask<const SEQ_LEN: usize, const HIDDEN: usize, E: Dtype, D: Device<E>>(
+) -> Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D> {
+    let dev = D::default();
+
+    let mask: [Tensor<(Const<HIDDEN>,), E, D>; SEQ_LEN] = std::array::from_fn(|i| {
+        if i == SEQ_LEN - 1 {
+            dev.zeros()
+        } else {
+            dev.ones()
+        }
+    });
+
+    mask.stack()
 }
