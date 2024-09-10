@@ -26,6 +26,7 @@ where
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
     [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
 {
     pub fn make_move(
         &self,

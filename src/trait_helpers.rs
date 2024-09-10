@@ -180,6 +180,7 @@ where
     [(); Config::MLP_INNER]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
+    [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
     [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized;
 
 impl<
@@ -188,7 +189,7 @@ impl<
             + num_traits::Float
             + rand_distr::uniform::SampleUniform
             + for<'a> std::ops::AddAssign<&'a E>,
-        D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize> + CopySlice<usize>,
+        D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize> + CopySlice<usize> + TensorToArray<(Const<{Config::SEQ_LEN}>, Const<{Config::HIDDEN_SIZE}>), E>,
         Config: DTModelConfig + 'static,
         Game: DTState<E, D, Config> + HumanEvaluatable<E, D, Config>,
     > DTModelWrapper<E, D, Config, Game>
@@ -204,6 +205,7 @@ where
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
     [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
 {
     pub fn evaluate(&self, mut starting_state: Game, temp: E, desired_reward: f32, verbose: bool) -> Game{
         let mut state_history = vec![starting_state.clone()];
@@ -267,6 +269,7 @@ where
         [(); Config::NUM_ATTENTION_HEADS]: Sized,
         [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
         [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
+        [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
     {
         let (batch, actual) =
             get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng), cap_from_game);

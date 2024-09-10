@@ -33,7 +33,7 @@ pub fn loss<const B: usize, const A: usize, E: Dtype, D: Device<E>, T: Tape<E, D
 
 impl<
         E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
-        D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize>,
+        D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize>+ TensorToArray<(dfdx::shapes::Const<{Config::SEQ_LEN}>, dfdx::shapes::Const<{Config::HIDDEN_SIZE}>), E>,
         Config: DTModelConfig + 'static,
         Game: DTState<E, D, Config>,
     > DTModelWrapper<E, D, Config, Game>
@@ -49,6 +49,7 @@ where
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
     [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
 {
     pub fn train_on_batch<
         const B: usize,
