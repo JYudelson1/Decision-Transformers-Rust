@@ -4,7 +4,7 @@ use dfdx::{
         modules::{FastGeLU, LayerNorm1D, Linear},
         Module, ModuleMut, ModuleVisitor, TensorCollection,
     },
-    prelude::{BroadcastTo, Device, TryStack},
+    prelude::*,
     shapes::{Const, Dtype},
     tensor::{Tape, Tensor, WithEmptyTape},
 };
@@ -50,7 +50,6 @@ impl<
                 Self::module("mlp1", |s| &s.mlp_1, |s| &mut s.mlp_1),
                 Self::module("gelu", |s| &s.gelu, |s| &mut s.gelu),
                 Self::module("mlp2", |s| &s.mlp_2, |s| &mut s.mlp_2),
-
             ),
             // Define how to construct the collection given its fields in the order they are given
             // above. This conversion is done using the ModuleFields trait.
@@ -75,7 +74,8 @@ impl<
         D: Device<E>,
     > Module<Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
     for DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>
-    where [(); HIDDEN / NUM_HEADS]: Sized,
+where
+    [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
 
@@ -110,7 +110,6 @@ impl<
         let out = self.ln.forward(mlp_out);
 
         Ok(out)
-
     }
 }
 
@@ -125,7 +124,8 @@ impl<
         D: Device<E>,
     > Module<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>>
     for DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>
-    where [(); HIDDEN / NUM_HEADS]: Sized,
+where
+    [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>;
 
@@ -175,7 +175,8 @@ impl<
         T: Tape<E, D>,
     > ModuleMut<Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>>
     for DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>
-    where [(); HIDDEN / NUM_HEADS]: Sized,
+where
+    [(); HIDDEN / NUM_HEADS]: Sized,
 {
     type Output = Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>;
 
@@ -207,9 +208,9 @@ impl<
         let mlp_out = y + mlp_skip;
 
         // Norm
-        //let out = self.ln.forward_mut(mlp_out);
+        let out = self.ln.forward_mut(mlp_out);
 
-        Ok(mlp_out)
+        Ok(out)
     }
 }
 
@@ -223,7 +224,7 @@ pub struct CustomTransformerDecoder<
     D: Device<E>,
 > {
     all_blocks: Vec<DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>>,
-    mask: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
+    pub mask: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
 }
 
 impl<
@@ -395,6 +396,10 @@ where
         &mut self,
         mut input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
     ) -> Result<Self::Output, Self::Error> {
+
+        let mask: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D> = self.mask.clone().broadcast();
+        input = input * mask;
+        
         for layer in &mut self.all_blocks {
             input = layer.forward_mut(input);
         }
