@@ -17,7 +17,7 @@ type LN<Config: DTModelConfig> = dfdx::nn::builders::LayerNorm1D<{Config::HIDDEN
 
 //type StatePredictor<const S: usize> = dfdx::nn::modules::Linear<{Config::HIDDEN_SIZE}, S, f32, STORAGE>;
 type ActionPredictor<Config: DTModelConfig, const A: usize, E, D> =
-    dfdx::nn::modules::Linear<{ 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}, A, E, D>;
+    dfdx::nn::modules::Linear<{ Config::HIDDEN_SIZE * Config::SEQ_LEN}, A, E, D>;
 //type ReturnPredictor = dfdx::nn::modules::Linear<{Config::HIDDEN_SIZE}, 1, f32, STORAGE>;
 
 type DTTransformerInner<Config: DTModelConfig, E, D> = CustomTransformerDecoder<{Config::HIDDEN_SIZE}, {Config::MLP_INNER}, {Config::NUM_ATTENTION_HEADS}, {Config::NUM_LAYERS}, {3 * Config::SEQ_LEN}, E, D>;
@@ -85,6 +85,7 @@ pub struct DTModel<
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
     [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized
 {
     pub transformer: DTTransformerInner<Config, E, D>,
     pub state_head: StateHead<Config, STATE, E, D>,
@@ -110,6 +111,7 @@ impl<
     [(); Config::HIDDEN_SIZE]: Sized,
     [(); Config::NUM_LAYERS]: Sized,
     [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized
 {
     type To<E2: Dtype, D2: Device<E2>> = DTModel<Config, S, A, E2, D2>;
 
@@ -174,6 +176,7 @@ where
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
     [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized
 {
     type Output = Tensor<(Const<A>,), E, D>;
 
@@ -206,10 +209,19 @@ where
 
         let out = self.transformer.forward(input);
 
-        // let out = out
-        //     .reshape::<(Const<{Config::SEQ_LEN}>, Const<3>, Const<{Config::HIDDEN_SIZE}>)>()
-        //     .permute::<_, Axes3<1, 0, 2>>();
-        let out = out.reshape::<(Const<{3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}>,)>();
+        let out = out
+            .reshape::<(
+                Const<{Config::SEQ_LEN}>,
+                Const<3>,
+                Const<{Config::HIDDEN_SIZE}>,
+            )>()
+            .permute::<_, Axes3<1, 0, 2>>()
+            .reshape::<(
+                Const<3>,
+                Const<{Config::HIDDEN_SIZE * Config::SEQ_LEN}>,
+            )>();
+
+        let out = out.select(dev.tensor(2));
 
         let actions = self.predict_action.forward(out);
 
@@ -237,6 +249,7 @@ where
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
     [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized
 {
     type Output = Tensor<(Const<B>, Const<A>), E, D, NoneTape>;
 
@@ -270,17 +283,21 @@ where
 
         let out = self.transformer.forward(input);
 
-        // let out = out
-        //     .reshape::<(
-        //         Const<B>,
-        //         Const<{Config::SEQ_LEN}>,
-        //         Const<3>,
-        //         Const<{Config::HIDDEN_SIZE}>,
-        //     )>()
-        //     .permute::<_, Axes4<0, 2, 1, 3>>();
+        let out = out
+            .reshape::<(
+                Const<B>,
+                Const<{Config::SEQ_LEN}>,
+                Const<3>,
+                Const<{Config::HIDDEN_SIZE}>,
+            )>()
+            .permute::<_, Axes4<2, 0, 1, 3>>()
+            .reshape::<(
+                Const<3>,
+                Const<B>,
+                Const<{Config::HIDDEN_SIZE * Config::SEQ_LEN}>,
+            )>();
 
-        // let actions = self.predict_action.forward(out.select(dev.tensor([2; B]))); // TOOD: Check correctness
-        let out = out.reshape::<(Const<B>,Const<{3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}>,)>();
+        let out: Tensor<(Const<B>, Const<{Config::HIDDEN_SIZE * Config::SEQ_LEN}>), E, D> = out.select(dev.tensor(2));
 
         let actions = self.predict_action.forward(out);
 
@@ -295,7 +312,7 @@ impl<
         const A: usize,
         const B: usize,
         T: Tape<E, D>,
-        E: Dtype + Float,
+        E: Dtype + Float + From<f32>,
         D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize>,
         Config: DTModelConfig + 'static
     > ModuleMut<BatchedInput<B, S, A, E, D, Config, T>>
@@ -310,6 +327,7 @@ where
     [(); Config::NUM_LAYERS]: Sized,
     [(); Config::HIDDEN_SIZE / Config::NUM_ATTENTION_HEADS]: Sized,
     [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
+    [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized
 {
     type Output = Tensor<(Const<B>, Const<A>), E, D, T>;
 
@@ -343,19 +361,21 @@ where
 
         let out = self.transformer.forward_mut(input);
 
-        // let out = out
-        //     .reshape::<(
-        //         Const<B>,
-        //         Const<{Config::SEQ_LEN}>,
-        //         Const<3>,
-        //         Const<{Config::HIDDEN_SIZE}>,
-        //     )>()
-        //     .permute::<_, Axes4<0, 2, 1, 3>>();
+        let out = out
+            .reshape::<(
+                Const<B>,
+                Const<{Config::SEQ_LEN}>,
+                Const<3>,
+                Const<{Config::HIDDEN_SIZE}>,
+            )>()
+            .permute::<_, Axes4<2, 0, 1, 3>>()
+            .reshape::<(
+                Const<3>,
+                Const<B>,
+                Const<{Config::HIDDEN_SIZE * Config::SEQ_LEN}>,
+            )>();
 
-        // let actions = self
-        //     .predict_action
-        //     .forward_mut(out.select(dev.tensor([2; B]))); // TOOD: Check correctness
-        let out = out.reshape::<(Const<B>,Const<{3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}>,)>();
+        let out = out.select(dev.tensor(2));
 
         let actions = self.predict_action.forward_mut(out);
 
