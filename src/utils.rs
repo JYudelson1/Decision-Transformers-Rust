@@ -23,10 +23,10 @@ pub fn stack_usize_batched<
 >(
     tensors: [Tensor<(Const<{ Config::SEQ_LEN }>,), usize, D>; B],
     dev: &D,
-) -> Tensor<(Const<B>, Const<{ Config::SEQ_LEN }>), usize, D> {
+) -> Tensor<(Const<B>, Const<{ Config::SEQ_LEN }>), usize, D>{
     let mut data: [[usize; Config::SEQ_LEN]; B] = [[0; Config::SEQ_LEN]; B];
 
-    for i in 0..Config::SEQ_LEN {
+    for i in 0..B {
         tensors[i].copy_into(&mut data[i]);
     }
 
