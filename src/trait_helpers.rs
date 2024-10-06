@@ -64,7 +64,7 @@ pub fn game_to_inputs<
     states: Vec<Game>,
     actions: Vec<Game::Action>,
     dev: &D,
-) -> Vec<Input<{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config, NoneTape>>
+) -> (Vec<Input<{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config, NoneTape>>, Vec<usize>)
 where
     [(); Config::MAX_EPISODES_IN_GAME]: Sized,
     [(); Config::SEQ_LEN]: Sized,
@@ -74,6 +74,7 @@ where
     [(); Config::NUM_ATTENTION_HEADS]: Sized,
 {
     let mut inputs = vec![];
+    let mut last_element = vec![];
 
     let rewards_to_go = get_rewards_to_go(&states, &actions);
 
@@ -89,38 +90,46 @@ where
     for (i, (state, action)) in states.into_iter().zip(actions.into_iter()).enumerate() {
         // Update actions
         let new_action = Game::action_to_tensor(&action);
-        next_sequence(&mut actions_in_seq, new_action);
+        next_sequence(&mut actions_in_seq, new_action, i);
 
         // Update states
         let new_state = state.to_tensor();
-        next_sequence(&mut states_in_seq, new_state);
+        next_sequence(&mut states_in_seq, new_state, i);
 
         // Update rtg
         let new_reward: E = rewards_to_go[i].into();
-        next_sequence(&mut rtg_in_seq, dev.tensor([new_reward]));
+        next_sequence(&mut rtg_in_seq, dev.tensor([new_reward]), i);
 
         // Update timesteps
-        next_sequence(&mut timesteps_in_seq, dev.tensor(i + 1));
+        next_sequence(&mut timesteps_in_seq, dev.tensor(i + 1), i);
 
         let input = (
             states_in_seq.clone().stack(),
-            masked_next(&actions_in_seq, dev).stack(),
+            masked_next(&actions_in_seq, dev, i).stack(),
             //actions_in_seq.clone().stack(),
             rtg_in_seq.clone().stack(),
             stack_usize(timesteps_in_seq.clone(), &dev),
         );
-        inputs.push(input)
+        inputs.push(input);
+        last_element.push(i);
     }
 
-    inputs
+    (inputs, last_element)
 }
 
 fn next_sequence<Config: DTModelConfig + 'static, T>(
     seq: &mut [T; Config::SEQ_LEN],
     new_last_element: T,
+    index: usize,
 ) {
-    seq.rotate_left(1);
-    seq[seq.len() - 1] = new_last_element;
+    // seq.rotate_left(1);
+    // seq[seq.len() - 1] = new_last_element;
+    if index < Config::SEQ_LEN {
+        seq[index] = new_last_element
+    } else {
+        seq.rotate_left(1);
+        seq[Config::SEQ_LEN - 1] = new_last_element
+    }
 }
 
 pub fn get_rewards_to_go<
@@ -158,9 +167,10 @@ fn masked_next<
 >(
     seq: &[Tensor<S, E, D>; Config::SEQ_LEN],
     dev: &D,
+    index: usize
 ) -> [Tensor<S, E, D>; Config::SEQ_LEN]{
     let mut new_seq = seq.clone();
-    new_seq[new_seq.len() - 1] = dev.zeros() - E::from(1.0);
+    new_seq[index] = dev.zeros() - E::from(1.0);
     new_seq
 }
 
@@ -271,10 +281,10 @@ where
         [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
         [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
     {
-        let (batch, actual) =
+        let (batch, actual, mask) =
             get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng), cap_from_game);
 
-        self.train_on_batch::<B, O>(batch, actual, optimizer)
+        self.train_on_batch::<B, O>(batch, actual, mask, optimizer)
     }
 
     pub fn save<P: AsRef<Path>>(&self, path: P)
@@ -307,6 +317,7 @@ pub fn get_batch_from_fn<
 ) -> (
     BatchedInput<B, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config, NoneTape>,
     [Game::Action; B],
+    Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<{Config::HIDDEN_SIZE}>), E, D>
 )
 where
     F: Fn(&mut R) -> (Vec<Game>, Vec<Game::Action>),
@@ -320,6 +331,8 @@ where
     let dev: D = Default::default();
     let mut batch: [Input<{ Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config, NoneTape>; B] =
         std::array::from_fn(|_| (dev.zeros(), dev.zeros(), dev.zeros(), dev.zeros()));
+
+    let mut mask_ends = [0; B];
 
     let mut num_examples = 0;
     let mut true_actions: [Option<Game::Action>; B] = std::array::from_fn(|_| None);
@@ -369,7 +382,7 @@ where
         }
 
         // Turn into tensor inputs
-        let inputs = game_to_inputs(states, actions, &dev);
+        let (inputs, last_elements) = game_to_inputs(states, actions, &dev);
 
         
         let len = inputs.len();
@@ -378,6 +391,7 @@ where
         for (i, input) in inputs.into_iter().enumerate() {
             let batch_i = num_examples + i;
             batch[batch_i] = input;
+            mask_ends[batch_i] = last_elements[i]
         }
 
         // Mark down the number added
@@ -397,5 +411,11 @@ where
 
     let batched_inputs = batch_inputs(batch, &dev);
 
-    (batched_inputs, true_actions)
+    (batched_inputs, true_actions, make_mask(mask_ends))
+}
+
+fn make_mask<const B: usize, const SEQ_LEN: usize, const HIDDEN: usize, E: Dtype + From<f32>, D: Device<E>>(
+    last_elements: [usize; B]
+) -> Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D> {
+    todo!()
 }

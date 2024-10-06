@@ -315,7 +315,7 @@ impl<
         E: Dtype + Float + From<f32>,
         D: Device<E> + DeviceBuildExt + dfdx::tensor::ZerosTensor<usize>,
         Config: DTModelConfig + 'static
-    > ModuleMut<BatchedInput<B, S, A, E, D, Config, T>>
+    > ModuleMut<(BatchedInput<B, S, A, E, D, Config, T>, Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<{Config::HIDDEN_SIZE}>), E, D>)>
     for DTModel<Config, S, A, E, D>
 where
     [(); 3 * Config::SEQ_LEN]: Sized,
@@ -335,8 +335,9 @@ where
 
     fn try_forward_mut(
         &mut self,
-        input: BatchedInput<B, S, A, E, D, Config, T>,
+        input: (BatchedInput<B, S, A, E, D, Config, T>, Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<{Config::HIDDEN_SIZE}>), E, D>),
     ) -> Result<Self::Output, Self::Error> {
+        let (input, mask) = input;
         let (states, actions, rewards, timesteps) = input;
         let dev: D = Default::default();
 

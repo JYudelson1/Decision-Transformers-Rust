@@ -80,6 +80,7 @@ pub trait GetOfflineData<
     ) -> (
         BatchedInput<B, { Self::STATE_SIZE }, { Self::ACTION_SIZE }, E, D, Config, NoneTape>,
         [Self::Action; B],
+        Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<{Config::HIDDEN_SIZE}>), E, D>
     )
     where
         [(); Config::MAX_EPISODES_IN_GAME]: Sized,

@@ -58,6 +58,7 @@ where
         &mut self,
         batch: BatchedInput<B, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config>,
         actions: [Game::Action; B],
+        mask: Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<{Config::HIDDEN_SIZE}>), E, D>,
         optimizer: &mut O,
     ) -> E
     where
@@ -75,7 +76,7 @@ where
             Config,
             OwnedTape<E, D>,
         > = (batch.0.traced(grads), batch.1, batch.2, batch.3);
-        let y = self.0.forward_mut(batch);
+        let y = self.0.forward_mut((batch, mask));
 
         // compute loss & run backpropagation
         let actual = actions

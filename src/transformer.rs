@@ -224,7 +224,6 @@ pub struct CustomTransformerDecoder<
     D: Device<E>,
 > {
     all_blocks: Vec<DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>>,
-    pub mask: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
 }
 
 impl<
@@ -247,26 +246,6 @@ impl<
     ) -> &mut DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D> {
         &mut self.all_blocks[i]
     }
-
-    // pub fn from_blocks<
-    //     V: ModuleVisitor<
-    //         CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, E, D>,
-    //         E,
-    //         D,
-    //     >,
-    // >(
-    //     blocks: Vec<<DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D> as TensorCollection<E, D>>::To<V::E2, V::D2>>,
-    // ) -> CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, V::E2, V::D2>
-    // where
-    //     DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D>: TensorCollection<E, D>,
-    //     CustomTransformerDecoder<HIDDEN, MLP_INNER, NUM_HEADS, NUM_LAYERS, SEQ_LEN, E, D>:
-    //         TensorCollection<E, D>,
-    //     V::E2: Dtype,
-    //     V::D2: Device<V::E2>,
-    // {
-    //     let layers: Vec<DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, V::E2, V::D2>> = blocks.into_iter().map(|block: <DecoderBlock<HIDDEN, SEQ_LEN, MLP_INNER, NUM_HEADS, E, D> as TensorCollection<E, D>>::To<V::E2, V::D2>| block.into()).collect();
-    //     CustomTransformerDecoder { all_blocks: layers }
-    // }
 }
 
 impl<
@@ -300,7 +279,6 @@ impl<
             // above. This conversion is done using the ModuleFields trait.
             |modules| CustomTransformerDecoder {
                 all_blocks: modules,
-                mask: build_mask::<SEQ_LEN, HIDDEN, V::E2, V::D2>(),
             },
         )
     }
@@ -328,8 +306,6 @@ where
         &self,
         mut input: Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
     ) -> Result<Self::Output, Self::Error> {
-
-        input = input * self.mask.clone();
 
         for layer in &self.all_blocks {
             input = layer.forward(input);
@@ -362,9 +338,6 @@ where
         mut input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D>,
     ) -> Result<Self::Output, Self::Error> {
 
-        let mask: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D> = self.mask.clone().broadcast();
-        input = input * mask;
-
         for layer in &self.all_blocks {
             input = layer.forward(input);
         }
@@ -396,9 +369,6 @@ where
         &mut self,
         mut input: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D, T>,
     ) -> Result<Self::Output, Self::Error> {
-
-        let mask: Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D> = self.mask.clone().broadcast();
-        input = input * mask;
         
         for layer in &mut self.all_blocks {
             input = layer.forward_mut(input);
