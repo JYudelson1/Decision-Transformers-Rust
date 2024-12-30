@@ -105,8 +105,8 @@ where
 
         let input = (
             states_in_seq.clone().stack(),
-            masked_next(&actions_in_seq, dev, i).stack(),
-            //actions_in_seq.clone().stack(),
+            //masked_next(&actions_in_seq, dev, i).stack(),
+            actions_in_seq.clone().stack(),
             rtg_in_seq.clone().stack(),
             stack_usize(timesteps_in_seq.clone(), &dev),
         );
@@ -281,10 +281,10 @@ where
         [(); 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
         [(); Config::HIDDEN_SIZE * Config::SEQ_LEN]: Sized,
     {
-        let (batch, actual, mask) =
+        let (batch, actual) =
             get_batch_from_fn(rng, |rng| self.play_one_game(temp, desired_reward, rng), cap_from_game);
 
-        self.train_on_batch::<B, O>(batch, actual, mask, optimizer)
+        self.train_on_batch::<B, O>(batch, actual, optimizer)
     }
 
     pub fn save<P: AsRef<Path>>(&self, path: P)
@@ -317,7 +317,7 @@ pub fn get_batch_from_fn<
 ) -> (
     BatchedInput<B, { Game::STATE_SIZE }, { Game::ACTION_SIZE }, E, D, Config, NoneTape>,
     [Game::Action; B],
-    Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<{Config::HIDDEN_SIZE}>), E, D>
+    //Tensor<(Const<B>, Const<{Config::SEQ_LEN}>, Const<{Config::HIDDEN_SIZE}>), E, D>
 )
 where
     F: Fn(&mut R) -> (Vec<Game>, Vec<Game::Action>),
@@ -411,7 +411,7 @@ where
 
     let batched_inputs = batch_inputs(batch, &dev);
 
-    (batched_inputs, true_actions, make_mask(mask_ends))
+    (batched_inputs, true_actions)
 }
 
 fn make_mask<const B: usize, const SEQ_LEN: usize, const HIDDEN: usize, E: Dtype + From<f32>, D: Device<E>>(
