@@ -275,7 +275,7 @@ where
 
         let stacked = [rewards, states, actions]
             .stack()
-            .permute::<_, Axes4<0, 2, 1, 3>>()
+            .permute::<_, Axes4<1, 2, 0, 3>>()
             .reshape::<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>)>();
 
         let input: Tensor<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>), E, D> =
@@ -353,7 +353,7 @@ where
 
         let stacked = [rewards, states, actions]
             .stack()
-            .permute::<_, Axes4<0, 2, 1, 3>>()
+            .permute::<_, Axes4<1, 2, 0, 3>>()
             .reshape::<(Const<B>, Const<{ 3 * Config::SEQ_LEN }>, Const<{Config::HIDDEN_SIZE}>)>();
         // let stacked = stacked.put_tape(tape);
 
