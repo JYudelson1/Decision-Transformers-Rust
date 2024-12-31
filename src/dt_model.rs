@@ -17,7 +17,7 @@ type LN<Config: DTModelConfig> = dfdx::nn::builders::LayerNorm1D<{Config::HIDDEN
 
 //type StatePredictor<const S: usize> = dfdx::nn::modules::Linear<{Config::HIDDEN_SIZE}, S, f32, STORAGE>;
 type ActionPredictor<Config: DTModelConfig, const A: usize, E, D> =
-    dfdx::nn::modules::Linear<{ Config::HIDDEN_SIZE * Config::SEQ_LEN}, A, E, D>;
+    dfdx::nn::modules::Linear<{ 3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}, A, E, D>;
 //type ReturnPredictor = dfdx::nn::modules::Linear<{Config::HIDDEN_SIZE}, 1, f32, STORAGE>;
 
 type DTTransformerInner<Config: DTModelConfig, E, D> = CustomTransformerDecoder<{Config::HIDDEN_SIZE}, {Config::MLP_INNER}, {Config::NUM_ATTENTION_HEADS}, {Config::NUM_LAYERS}, {3 * Config::SEQ_LEN}, E, D>;
@@ -210,18 +210,7 @@ where
         let out = self.transformer.forward(input);
 
         let out = out
-            .reshape::<(
-                Const<{Config::SEQ_LEN}>,
-                Const<3>,
-                Const<{Config::HIDDEN_SIZE}>,
-            )>()
-            .permute::<_, Axes3<1, 0, 2>>()
-            .reshape::<(
-                Const<3>,
-                Const<{Config::HIDDEN_SIZE * Config::SEQ_LEN}>,
-            )>();
-
-        let out = out.select(dev.tensor(2));
+            .reshape::<(Const<{3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}>,)>();
 
         let actions = self.predict_action.forward(out);
 
@@ -269,7 +258,6 @@ where
         let times = self.time_embeddings.forward(timesteps);
 
         let rewards = rewards + times.clone();
-        
         let actions = actions + times.clone();
         let states = states + times;
 
@@ -286,18 +274,7 @@ where
         let out = out
             .reshape::<(
                 Const<B>,
-                Const<{Config::SEQ_LEN}>,
-                Const<3>,
-                Const<{Config::HIDDEN_SIZE}>,
-            )>()
-            .permute::<_, Axes4<2, 0, 1, 3>>()
-            .reshape::<(
-                Const<3>,
-                Const<B>,
-                Const<{Config::HIDDEN_SIZE * Config::SEQ_LEN}>,
-            )>();
-
-        let out: Tensor<(Const<B>, Const<{Config::HIDDEN_SIZE * Config::SEQ_LEN}>), E, D> = out.select(dev.tensor(2));
+                Const<{3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}>)>();
 
         let actions = self.predict_action.forward(out);
 
@@ -365,18 +342,7 @@ where
         let out = out
             .reshape::<(
                 Const<B>,
-                Const<{Config::SEQ_LEN}>,
-                Const<3>,
-                Const<{Config::HIDDEN_SIZE}>,
-            )>()
-            .permute::<_, Axes4<2, 0, 1, 3>>()
-            .reshape::<(
-                Const<3>,
-                Const<B>,
-                Const<{Config::HIDDEN_SIZE * Config::SEQ_LEN}>,
-            )>();
-
-        let out = out.select(dev.tensor(2));
+                Const<{3 * Config::HIDDEN_SIZE * Config::SEQ_LEN}>)>();
 
         let actions = self.predict_action.forward_mut(out);
 
