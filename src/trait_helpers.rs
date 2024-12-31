@@ -256,6 +256,7 @@ where
         (states, actions)
     }
 
+    /// Train the model on synthetic data that it generates itself. Note that this is a source of infinite data, but runs the risk of exploring very little of the possible decision space.
     pub fn online_learn<
         const B: usize,
         R: rand::Rng + ?Sized,
