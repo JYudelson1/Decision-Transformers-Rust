@@ -105,8 +105,8 @@ where
 
         let input = (
             states_in_seq.clone().stack(),
-            //masked_next(&actions_in_seq, dev, i).stack(),
-            actions_in_seq.clone().stack(),
+            masked_next(&actions_in_seq, dev).stack(),
+            //actions_in_seq.clone().stack(),
             rtg_in_seq.clone().stack(),
             stack_usize(timesteps_in_seq.clone(), &dev),
         );
@@ -167,10 +167,9 @@ fn masked_next<
 >(
     seq: &[Tensor<S, E, D>; Config::SEQ_LEN],
     dev: &D,
-    index: usize
 ) -> [Tensor<S, E, D>; Config::SEQ_LEN]{
     let mut new_seq = seq.clone();
-    new_seq[index] = dev.zeros() - E::from(1.0);
+    new_seq[Config::SEQ_LEN - 1] = dev.zeros() - E::from(1.0);
     new_seq
 }
 
