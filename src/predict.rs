@@ -42,13 +42,10 @@ where
         // Update the rewards-to-go to total to the desired reward
         let state_without_last = Vec::from(&state_history[0..state_history.len() - 1]);
         let mut rewards_so_far = get_rewards_to_go(&state_without_last, action_history);
+        rewards_so_far.push(0.0);
 
-        let total_reward = if rewards_so_far.len() > 0 {
-            rewards_so_far[0]
-        } else {
-            0.0
-        };
-
+        let total_reward = rewards_so_far[0];
+        
         if total_reward > desired_total_reward {
             // println!("Attempting to reach a reward of {desired_total_reward}, but reward is already {total_reward}");
         } else {
@@ -80,6 +77,9 @@ where
             let action = &action_history[actions_start + actions_index];
             actions_in_seq[seq_index] = Game::action_to_tensor(action);
         }
+        // Mask the very last action (to be predicted)
+        let mask: E = <E as From<f32>>::from(-1.0_f32);
+        actions_in_seq[Config::SEQ_LEN - 1] = dev.zeros() + mask;
 
         // Build states
         let mut amt_to_use = Config::SEQ_LEN;
@@ -94,15 +94,14 @@ where
             states_in_seq[seq_index] = state.to_tensor();
         }
 
-        // Build rewards (last entry should be empty)
-        assert_eq!(rewards_so_far.len(), action_history.len());
-        let mut amt_to_use = { Config::SEQ_LEN } - 1;
-        if action_history.len() < amt_to_use {
-            amt_to_use = action_history.len();
+        // Build rewards
+        let mut amt_to_use = { Config::SEQ_LEN };
+        if rewards_so_far.len() < amt_to_use {
+            amt_to_use = rewards_so_far.len();
         }
-        let rewards_start = action_history.len() - amt_to_use;
+        let rewards_start = rewards_so_far.len() - amt_to_use;
         for (rewards_index, seq_index) in
-            (({ Config::SEQ_LEN } - amt_to_use - 1)..Config::SEQ_LEN - 1).enumerate()
+            (({ Config::SEQ_LEN } - amt_to_use)..Config::SEQ_LEN).enumerate()
         {
             let reward = rewards_so_far[rewards_index + rewards_start];
             rtg_in_seq[seq_index] = dev.tensor([reward.into()]);
@@ -117,8 +116,9 @@ where
         for (time, seq_index) in
             (({ Config::SEQ_LEN } - amt_to_use)..Config::SEQ_LEN).enumerate()
         {
-            timesteps_in_seq[seq_index] = dev.tensor(time_start + time)
+            timesteps_in_seq[seq_index] = dev.tensor(time_start + time + 1)
         }
+        
 
         let input: Input<
             { Game::STATE_SIZE },
