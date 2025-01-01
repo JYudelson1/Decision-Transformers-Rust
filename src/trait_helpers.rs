@@ -90,18 +90,18 @@ where
     for (i, (state, action)) in states.into_iter().zip(actions.into_iter()).enumerate() {
         // Update actions
         let new_action = Game::action_to_tensor(&action);
-        next_sequence(&mut actions_in_seq, new_action, i);
+        next_sequence(&mut actions_in_seq, new_action);
 
         // Update states
         let new_state = state.to_tensor();
-        next_sequence(&mut states_in_seq, new_state, i);
+        next_sequence(&mut states_in_seq, new_state);
 
         // Update rtg
         let new_reward: E = rewards_to_go[i].into();
-        next_sequence(&mut rtg_in_seq, dev.tensor([new_reward]), i);
+        next_sequence(&mut rtg_in_seq, dev.tensor([new_reward]));
 
         // Update timesteps
-        next_sequence(&mut timesteps_in_seq, dev.tensor(i + 1), i);
+        next_sequence(&mut timesteps_in_seq, dev.tensor(i + 1));
 
         let input = (
             states_in_seq.clone().stack(),
@@ -120,16 +120,9 @@ where
 fn next_sequence<Config: DTModelConfig + 'static, T>(
     seq: &mut [T; Config::SEQ_LEN],
     new_last_element: T,
-    index: usize,
 ) {
-    // seq.rotate_left(1);
-    // seq[seq.len() - 1] = new_last_element;
-    if index < Config::SEQ_LEN {
-        seq[index] = new_last_element
-    } else {
-        seq.rotate_left(1);
-        seq[Config::SEQ_LEN - 1] = new_last_element
-    }
+    seq.rotate_left(1);
+    seq[seq.len() - 1] = new_last_element;
 }
 
 pub fn get_rewards_to_go<
