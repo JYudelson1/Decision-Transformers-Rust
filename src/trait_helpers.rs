@@ -413,9 +413,3 @@ where
 
     (batched_inputs, true_actions)
 }
-
-fn make_mask<const B: usize, const SEQ_LEN: usize, const HIDDEN: usize, E: Dtype + From<f32>, D: Device<E>>(
-    last_elements: [usize; B]
-) -> Tensor<(Const<B>, Const<SEQ_LEN>, Const<HIDDEN>), E, D> {
-    todo!()
-}

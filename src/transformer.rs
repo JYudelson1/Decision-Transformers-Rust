@@ -377,6 +377,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 fn build_mask<const SEQ_LEN: usize, const HIDDEN: usize, E: Dtype, D: Device<E>>(
 ) -> Tensor<(Const<SEQ_LEN>, Const<HIDDEN>), E, D> {
     let dev = D::default();
