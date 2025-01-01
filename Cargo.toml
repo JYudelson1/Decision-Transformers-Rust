@@ -6,7 +6,7 @@ license = "MIT"
 description = "A fast, extensible implementation of Decision Transformers in Rust using dfdx. Based on the paper Decision Transformer: Reinforcement Learning via Sequence Modeling."
 repository = "https://github.com/JYudelson1/decision_transformer_dfdx/tree/main"
 readme = "README.md"
-keywords = ["decision transformer"]
+keywords = ["ml"]
 
 
 [dependencies]
