@@ -213,6 +213,8 @@ where
         let mut state_history = vec![starting_state.clone()];
         let mut action_history = vec![];
 
+        let mut cumulative_reward = 0.0;
+
         if verbose {starting_state.print()}
 
         while starting_state.is_still_playing() {
@@ -220,6 +222,10 @@ where
             action_history.push(action.clone());
 
             if verbose {Game::print_action(&action)}
+
+            // Check the reward
+            cumulative_reward += starting_state.get_reward(action.clone());
+            if verbose {println!("Current cumulative reward: {cumulative_reward:.02}")}
 
             starting_state.apply_action(action);
             state_history.push(starting_state.clone());
