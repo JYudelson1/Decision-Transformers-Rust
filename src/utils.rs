@@ -1,8 +1,8 @@
 use dfdx::prelude::*;
 
-use crate::{dt_model::Input, DTModelConfig};
+use crate::{dt_model::Input, DTModelConfig, DTState};
 
-pub fn stack_usize<E: Dtype, D: Device<E>, Config: DTModelConfig>(
+pub(crate) fn stack_usize<E: Dtype, D: Device<E>, Config: DTModelConfig>(
     tensors: [Tensor<(), usize, D>; Config::SEQ_LEN],
     dev: &D,
 ) -> Tensor<(Const<{ Config::SEQ_LEN }>,), usize, D> {
@@ -15,7 +15,7 @@ pub fn stack_usize<E: Dtype, D: Device<E>, Config: DTModelConfig>(
     dev.tensor(data)
 }
 
-pub fn stack_usize_batched<
+pub(crate) fn stack_usize_batched<
     E: Dtype,
     D: Device<E> + CopySlice<usize>,
     Config: DTModelConfig,
@@ -35,7 +35,13 @@ pub fn stack_usize_batched<
 }
 
 #[allow(dead_code)]
-pub fn print_input<const S: usize, const A: usize, E: Dtype, D: Device<E>, Config: DTModelConfig>(
+pub(crate) fn print_input<
+    const S: usize,
+    const A: usize,
+    E: Dtype,
+    D: Device<E>,
+    Config: DTModelConfig,
+>(
     inp: &Input<S, A, E, D, Config>,
 ) where
     [(); Config::SEQ_LEN]: Sized,
@@ -58,4 +64,25 @@ fn print_seq<E: Dtype, D: Device<E>, Config: DTModelConfig, const M: usize>(
     for i in 0..Config::SEQ_LEN {
         println!("{i}: {:?}", seq.clone().select(dev.tensor(i)).as_vec());
     }
+}
+
+#[allow(dead_code)]
+pub(crate) fn cumulative_rewards<
+    E: Dtype + From<f32> + num_traits::Float + rand_distr::uniform::SampleUniform,
+    D: Device<E>,
+    Config: DTModelConfig + 'static,
+    S: DTState<E, D, Config>,
+>(
+    states: Vec<S>,
+    actions: Vec<S::Action>,
+) -> f32 {
+    assert_eq!(states.len(), actions.len());
+
+    let mut reward = 0.0;
+
+    for i in 0..states.len() {
+        reward += states[i].get_reward(actions[i].clone())
+    }
+
+    reward
 }
