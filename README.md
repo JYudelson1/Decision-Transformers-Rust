@@ -131,6 +131,10 @@ let loss = model.online_learn::<100, _>(
 );
 ```
 
+## Quickstart example
+
+For an extremely simple example of how to use this project, check out [my very simple DT test](https://github.com/JYudelson1/dt_test/).
+
 ## Snake Game Example
 
 The repository includes a complete example implementing a snake game environment using the Decision Transformer framework. This serves as a reference implementation showing how to:
